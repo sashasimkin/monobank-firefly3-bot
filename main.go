@@ -209,6 +209,33 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			Notes:       string(body),
 			SourceId:    account.Id,
 		})
+	case "YouTube":
+		transactionList = append(transactionList, firefly3.TransactionSplitStore{
+			Type_:       &transactionTypeWithdrawal,
+			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
+			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
+			Description: "YouTube membership: Latte ASMR",
+			Notes:       string(body),
+			SourceId:    account.Id,
+		})
+	case "Київстар +380672463500":
+		transactionList = append(transactionList, firefly3.TransactionSplitStore{
+			Type_:       &transactionTypeWithdrawal,
+			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
+			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
+			Description: "Kyivstar: +380672463500",
+			Notes:       string(body),
+			SourceId:    account.Id,
+		})
+	case "Lifecell +380732463500":
+		transactionList = append(transactionList, firefly3.TransactionSplitStore{
+			Type_:       &transactionTypeWithdrawal,
+			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
+			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
+			Description: "Lifecell: +380732463500",
+			Notes:       string(body),
+			SourceId:    account.Id,
+		})
 		break
 	}
 
