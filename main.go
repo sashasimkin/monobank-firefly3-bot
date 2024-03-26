@@ -127,13 +127,13 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
 		firefly3Transaction.DestinationId = "1"
-	} else if slices.Contains([]string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет"}, transaction.Data.StatementItem.Description) {
+	} else if slices.Contains([]int{5411, 5499, 5451, 5422, 5412, 5921}, transaction.Data.StatementItem.Mcc) || slices.Contains([]string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Description = "Groceries"
-	} else if slices.Contains([]string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7"}, transaction.Data.StatementItem.Description) {
+	} else if slices.Contains([]string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "vidshkod ekv apt12"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Description = "Medications"
-	} else if slices.Contains([]string{"Київ Цифровий", "Київпастранс"}, transaction.Data.StatementItem.Description) {
+	} else if slices.Contains([]int{4131, 4111, 4112}, transaction.Data.StatementItem.Mcc) || slices.Contains([]string{"Київ Цифровий", "Київпастранс"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Description = "Public transport"
-	} else if slices.Contains([]string{"McDonald's"}, transaction.Data.StatementItem.Description) {
+	} else if slices.Contains([]string{"McDonald’s"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Description = "McDonalds"
 	} else if slices.Contains([]string{"LeoCafe"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Description = "Cafe"
