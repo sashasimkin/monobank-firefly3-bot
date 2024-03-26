@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -55,8 +56,14 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"jJPAm0cfwAJv3C0I-kYpTA\",\"statementItem\":{\"id\":\"-YdIgUpWDogXEMSceQ\",\"time\":1711354414,\"description\":\"З чорної картки\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":100,\"operationAmount\":100,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":100,\"hold\":true}}}")
+	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"AQj_9aV8GxUS9opPJQ\",\"time\":1711448198,\"description\":\"Київ Цифровий\",\"mcc\":4111,\"originalMcc\":4111,\"amount\":-800,\"operationAmount\":-800,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":9528749,\"hold\":true,\"receiptId\":\"ABBT-6020-K1H7-A2ME\"}}}")
 	logString(string(body))
+
+	if len(string(body)) == 0 {
+		logString("empty body")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
 	// parse body
 	var transaction models.Transaction
@@ -104,67 +111,43 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// create transaction
 	t := firefly3.TransactionSplitStore{
 		Type_:    &transactionTypeWithdrawal,
-		Date:     time.Now(), // time.Unix(int64(time.Now()), 0)
+		Date:     time.Unix(int64(transaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
 		Notes:    string(body),
-		Amount:   strconv.Itoa(int(math.Round(float64(transaction.Data.StatementItem.Amount / 100)))),
+		Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(transaction.Data.StatementItem.Amount / 100))))),
 		SourceId: account.Id,
 	}
 
-	// create transaction
-	switch transaction.Data.StatementItem.Description {
-	case "З чорної картки":
+	if slices.Contains([]string{"З чорної картки"}, transaction.Data.StatementItem.Description) {
 		t.Type_ = &transactionTypeTransfer
 		t.Description = "Transfer between accounts"
 		t.DestinationId = "60"
-		break
-	case "З білої картки":
+	} else if slices.Contains([]string{"З білої картки"}, transaction.Data.StatementItem.Description) {
 		t.Type_ = &transactionTypeTransfer
 		t.Description = "Transfer between accounts"
 		t.DestinationId = "1"
-		break
-	case "АТБ":
-	case "Велмарт":
-	case "Novus":
-	case "Glovo":
-	case "zakaz.ua":
-	case "Мегамаркет":
+	} else if slices.Contains([]string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Groceries"
-		break
-	case "Аптека Доброго Дня":
-	case "Аптека оптових цін":
-	case "Аптека Копійка":
-	case "Аптека Гала":
-	case "Аптека АНЦ":
-	case "APTEKA 7":
+	} else if slices.Contains([]string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Medications"
-		break
-	case "Київ Цифровий":
-	case "Київпастранс":
+	} else if slices.Contains([]string{"Київ Цифровий", "Київпастранс"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Public transport"
-		break
-	case "McDonald's":
+	} else if slices.Contains([]string{"McDonald's"}, transaction.Data.StatementItem.Description) {
 		t.Description = "McDonalds"
-		break
-	case "LeoCafe":
+	} else if slices.Contains([]string{"LeoCafe"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Cafe"
-		break
-	case "Mafia":
-		t.Description = "Restaurant"
-		break
-	case "Lumberjack Barberhouse":
+	} else if slices.Contains([]string{"Lumberjack Barberhouse"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Lumberjack: haircut"
-		break
-	case "Hetzner":
+	} else if slices.Contains([]string{"Hetzner"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Hetzner: vps2"
-	case "YouTube":
+	} else if slices.Contains([]string{"YouTube"}, transaction.Data.StatementItem.Description) {
 		t.Description = "YouTube membership: Latte ASMR"
-	case "Київстар +380672463500":
+	} else if slices.Contains([]string{"Київстар +380672463500"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Kyivstar: +380672463500"
-	case "Lifecell +380732463500":
+	} else if slices.Contains([]string{"Lifecell +380732463500"}, transaction.Data.StatementItem.Description) {
 		t.Description = "Lifecell: +380732463500"
-		break
 	}
 
 	if len(t.Description) > 0 {
