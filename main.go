@@ -85,7 +85,6 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	// process transaction
 	transactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
 	transactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
-	var transactionList []firefly3.TransactionSplitStore
 
 	// get firefly3 account
 	listOpts := firefly3.AccountsApiListAccountOpts{
@@ -112,7 +111,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create transaction
-	t := firefly3.TransactionSplitStore{
+	firefly3Transaction := firefly3.TransactionSplitStore{
 		Type_:    &transactionTypeWithdrawal,
 		Date:     time.Unix(int64(transaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
 		Notes:    string(body),
@@ -121,42 +120,40 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if slices.Contains([]string{"З чорної картки"}, transaction.Data.StatementItem.Description) {
-		t.Type_ = &transactionTypeTransfer
-		t.Description = "Transfer between accounts"
-		t.DestinationId = "60"
+		firefly3Transaction.Type_ = &transactionTypeTransfer
+		firefly3Transaction.Description = "Transfer between accounts"
+		firefly3Transaction.DestinationId = "60"
 	} else if slices.Contains([]string{"З білої картки"}, transaction.Data.StatementItem.Description) {
-		t.Type_ = &transactionTypeTransfer
-		t.Description = "Transfer between accounts"
-		t.DestinationId = "1"
+		firefly3Transaction.Type_ = &transactionTypeTransfer
+		firefly3Transaction.Description = "Transfer between accounts"
+		firefly3Transaction.DestinationId = "1"
 	} else if slices.Contains([]string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Groceries"
+		firefly3Transaction.Description = "Groceries"
 	} else if slices.Contains([]string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Medications"
+		firefly3Transaction.Description = "Medications"
 	} else if slices.Contains([]string{"Київ Цифровий", "Київпастранс"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Public transport"
+		firefly3Transaction.Description = "Public transport"
 	} else if slices.Contains([]string{"McDonald's"}, transaction.Data.StatementItem.Description) {
-		t.Description = "McDonalds"
+		firefly3Transaction.Description = "McDonalds"
 	} else if slices.Contains([]string{"LeoCafe"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Cafe"
+		firefly3Transaction.Description = "Cafe"
 	} else if slices.Contains([]string{"Lumberjack Barberhouse"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Lumberjack: haircut"
+		firefly3Transaction.Description = "Lumberjack: haircut"
 	} else if slices.Contains([]string{"Hetzner"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Hetzner: vps2"
+		firefly3Transaction.Description = "Hetzner: vps2"
 	} else if slices.Contains([]string{"YouTube"}, transaction.Data.StatementItem.Description) {
-		t.Description = "YouTube membership: Latte ASMR"
+		firefly3Transaction.Description = "YouTube membership: Latte ASMR"
 	} else if slices.Contains([]string{"Київстар +380672463500"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Kyivstar: +380672463500"
+		firefly3Transaction.Description = "Kyivstar: +380672463500"
 	} else if slices.Contains([]string{"Lifecell +380732463500"}, transaction.Data.StatementItem.Description) {
-		t.Description = "Lifecell: +380732463500"
+		firefly3Transaction.Description = "Lifecell: +380732463500"
 	}
 
-	if len(t.Description) > 0 {
-		transactionList = append(transactionList, t)
-
+	if len(firefly3Transaction.Description) > 0 {
 		transactionOpts := firefly3.TransactionsApiStoreTransactionOpts{}
 		_, _, err = client.TransactionsApi.StoreTransaction(ctx, firefly3.TransactionStore{
 			ApplyRules:   true,
-			Transactions: transactionList,
+			Transactions: []firefly3.TransactionSplitStore{firefly3Transaction},
 		}, &transactionOpts)
 		if err != nil {
 			logString(err.Error())
