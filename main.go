@@ -21,33 +21,19 @@ import (
 // https://api.monobank.ua/docs/index.html#tag/Kliyentski-personalni-dani/paths/~1personal~1statement~1{account}~1{from}~1{to}/get
 // https://api-docs.firefly-iii.org/#/accounts/listAccount
 
-// curl -X POST https://api.monobank.ua/personal/webhook -H 'Content-Type: application/json' -H 'X-Token: ' -d '{"webHookUrl":"https://monobank-firefly3.stuzer.link/webhook"}'
+// curl -X POST https://api.monobank.ua/personal/webhook -H 'Content-TransactionType: application/json' -H 'X-Token: ' -d '{"webHookUrl":"https://monobank-firefly3.stuzer.link/webhook"}'
 
-// curl -X POST https://monobank-firefly3.stuzer.link/webhook -H 'Content-Type: application/json' -d '{"test":123}'
+// curl -X POST https://monobank-firefly3.stuzer.link/webhook -H 'Content-TransactionType: application/json' -d '{"test":123}'
 
-func logString(str string) {
-	if len(os.Getenv("LOG_FILE")) == 0 {
-		return
-	}
-
-	f, err := os.OpenFile(os.Getenv("LOG_FILE"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(str + "\n"); err != nil {
-		fmt.Println(err)
-	}
-}
+var ShopConfig []ShopConfigItem
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
-	logString("-----------------\nwebhook received!")
+	LogString("-----------------\nwebhook received!")
 
 	// read body bytes
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logString(err.Error())
+		LogString(err.Error())
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -56,11 +42,11 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"AQj_9aV8GxUS9opPJQ\",\"time\":1711448198,\"description\":\"Київ Цифровий\",\"mcc\":4111,\"originalMcc\":4111,\"amount\":-800,\"operationAmount\":-800,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":9528749,\"hold\":true,\"receiptId\":\"ABBT-6020-K1H7-A2ME\"}}}")
-	logString(string(body))
+	body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"pPnTnerhs6R3kEw2sQ\",\"time\":1711462716,\"description\":\"Сільпо\",\"mcc\":5411,\"originalMcc\":5411,\"amount\":-60300,\"operationAmount\":-60300,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":452,\"balance\":9143537,\"hold\":true,\"receiptId\":\"C1H6-8520-8T85-B17M\"}}}")
+	LogString(string(body))
 
 	if len(string(body)) == 0 {
-		logString("empty body")
+		LogString("empty body")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -69,7 +55,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	var transaction models.Transaction
 	err = json.Unmarshal(body, &transaction)
 	if err != nil {
-		logString(err.Error())
+		LogString(err.Error())
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -82,17 +68,13 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	// process transaction
-	transactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
-	transactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
-
 	// get firefly3 account
 	listOpts := firefly3.AccountsApiListAccountOpts{
 		Type_: optional.NewInterface("asset"),
 	}
 	accounts, _, err := client.AccountsApi.ListAccount(ctx, &listOpts)
 	if err != nil {
-		logString(err.Error())
+		LogString(err.Error())
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -105,12 +87,15 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(account.Id) == 0 {
-		logString("unable to find account " + transaction.Data.Account + " in firefly3")
+		LogString("unable to find account " + transaction.Data.Account + " in firefly3")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	// create transaction
+	transactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
+	transactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
+
 	firefly3Transaction := firefly3.TransactionSplitStore{
 		Type_:    &transactionTypeWithdrawal,
 		Date:     time.Unix(int64(transaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
@@ -127,26 +112,13 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
 		firefly3Transaction.DestinationId = "1"
-	} else if slices.Contains([]int{5411, 5499, 5451, 5422, 5412, 5921}, transaction.Data.StatementItem.Mcc) || slices.Contains([]string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Groceries"
-	} else if slices.Contains([]string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "vidshkod ekv apt12"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Medications"
-	} else if slices.Contains([]int{4131, 4111, 4112}, transaction.Data.StatementItem.Mcc) || slices.Contains([]string{"Київ Цифровий", "Київпастранс"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Public transport"
-	} else if slices.Contains([]string{"McDonald’s"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "McDonalds"
-	} else if slices.Contains([]string{"LeoCafe"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Cafe"
-	} else if slices.Contains([]string{"Lumberjack Barberhouse"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Lumberjack: haircut"
-	} else if slices.Contains([]string{"Hetzner"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Hetzner: vps2"
-	} else if slices.Contains([]string{"YouTube"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "YouTube membership: Latte ASMR"
-	} else if slices.Contains([]string{"Київстар +380672463500"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Kyivstar: +380672463500"
-	} else if slices.Contains([]string{"Lifecell +380732463500"}, transaction.Data.StatementItem.Description) {
-		firefly3Transaction.Description = "Lifecell: +380732463500"
+	} else {
+		for _, row := range ShopConfig {
+			if slices.Contains(row.Names, transaction.Data.StatementItem.Description) || slices.Contains(row.MCCCodes, transaction.Data.StatementItem.Mcc) {
+				firefly3Transaction.Description = row.TransactionDescription
+				break
+			}
+		}
 	}
 
 	if len(firefly3Transaction.Description) > 0 {
@@ -156,7 +128,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			Transactions: []firefly3.TransactionSplitStore{firefly3Transaction},
 		}, &transactionOpts)
 		if err != nil {
-			logString(err.Error())
+			LogString(err.Error())
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -171,7 +143,74 @@ func main() {
 		log.Fatalf("Error loading .env file")
 	}
 
+	/**
+	 * Bills
+	 */
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Hetzner"},
+		TransactionDescription: "Hetzner: vps2",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"YouTube"},
+		TransactionDescription: "YouTube membership: Latte ASMR",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Київстар +380672463500"},
+		TransactionDescription: "Kyivstar: +380672463500",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Lifecell +380732463500"},
+		TransactionDescription: "Lifecell: +380732463500",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"JetBrains"},
+		TransactionDescription: "JetBrains: GoLand",
+	})
+
+	/**
+	 * Other
+	 */
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		MCCCodes:               []int{5411, 5499, 5451, 5422, 5412, 5921},
+		Names:                  []string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо"},
+		TransactionDescription: "Groceries",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "vidshkod ekv apt12"},
+		TransactionDescription: "Medications",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		MCCCodes:               []int{4131, 4111, 4112},
+		Names:                  []string{"Київ Цифровий", "Київпастранс"},
+		TransactionDescription: "Medications",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"McDonald’s"},
+		TransactionDescription: "McDonalds",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"LeoCafe"},
+		TransactionDescription: "Cafe",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Lumberjack Barberhouse"},
+		TransactionDescription: "Lumberjack: haircut",
+	})
+
 	http.HandleFunc("/webhook", handleWebhook)
+
 	fmt.Println("Webhook server listening on :3021")
-	http.ListenAndServe(":3021", nil)
+	err = http.ListenAndServe(":3021", nil)
+	if err != nil {
+		panic(err.Error())
+	}
 }
