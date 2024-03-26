@@ -10,6 +10,7 @@ import (
 	"log"
 	"main/firefly3"
 	"main/monobank/api/webhook/models"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,13 +24,29 @@ import (
 
 // curl -X POST https://monobank-firefly3.stuzer.link/webhook -H 'Content-Type: application/json' -d '{"test":123}'
 
+func logString(str string) {
+	if len(os.Getenv("LOG_FILE")) == 0 {
+		return
+	}
+
+	f, err := os.OpenFile(os.Getenv("LOG_FILE"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(str + "\n"); err != nil {
+		fmt.Println(err)
+	}
+}
+
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Webhook received!")
+	logString("-----------------\nwebhook received!")
 
 	// read body bytes
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println(err)
+		logString(err.Error())
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -38,48 +55,40 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	//body := []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"jJPAm0cfwAJv3C0I-kYpTA\",\"statementItem\":{\"id\":\"-YdIgUpWDogXEMSceQ\",\"time\":1711354414,\"description\":\"З чорної картки\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":100,\"operationAmount\":100,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":100,\"hold\":true}}}")
-
-	// log body
-	f, err := os.OpenFile("/tmp/monobank-filefly3.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(string(body) + "\n"); err != nil {
-		fmt.Println(err)
-	}
+	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"jJPAm0cfwAJv3C0I-kYpTA\",\"statementItem\":{\"id\":\"-YdIgUpWDogXEMSceQ\",\"time\":1711354414,\"description\":\"З чорної картки\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":100,\"operationAmount\":100,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":100,\"hold\":true}}}")
+	logString(string(body))
 
 	// parse body
 	var transaction models.Transaction
 	err = json.Unmarshal(body, &transaction)
 	if err != nil {
-		fmt.Println(err)
+		logString(err.Error())
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	// init firefly3 client
 	clientConf := firefly3.NewConfiguration()
-	clientConf.BasePath = "https://firefly3.stuzer.link/api"
+	clientConf.BasePath = os.Getenv("FIREFLY3_API_URL")
 	clientConf.AddDefaultHeader("Authorization", "Bearer "+os.Getenv("FIREFLY3_TOKEN"))
 	client := firefly3.NewAPIClient(clientConf)
 
 	ctx := context.Background()
 
+	// process transaction
 	transactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
 	transactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
 	var transactionList []firefly3.TransactionSplitStore
 
-	// process transaction
-
-	// get account
+	// get firefly3 account
 	listOpts := firefly3.AccountsApiListAccountOpts{
 		Type_: optional.NewInterface("asset"),
 	}
 	accounts, _, err := client.AccountsApi.ListAccount(ctx, &listOpts)
 	if err != nil {
-		log.Fatalf(err.Error())
+		logString(err.Error())
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
 	var account firefly3.AccountRead
@@ -90,34 +99,30 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(account.Id) == 0 {
-		fmt.Printf("unable to find account %s in firefly3\n", transaction.Data.Account)
+		logString("unable to find account " + transaction.Data.Account + " in firefly3")
 		w.WriteHeader(http.StatusOK)
 		return
+	}
+
+	t := firefly3.TransactionSplitStore{
+		Type_:    &transactionTypeWithdrawal,
+		Date:     time.Now(), // time.Unix(int64(time.Now()), 0)
+		Notes:    string(body),
+		Amount:   strconv.Itoa(int(math.Round(float64(transaction.Data.StatementItem.Amount / 100)))),
+		SourceId: account.Id,
 	}
 
 	// create transaction
 	switch transaction.Data.StatementItem.Description {
 	case "З чорної картки":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:         &transactionTypeTransfer,
-			Date:          time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:        strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description:   "Transfer between accounts",
-			Notes:         string(body),
-			SourceId:      account.Id,
-			DestinationId: "60",
-		})
+		t.Type_ = &transactionTypeTransfer
+		t.Description = "Transfer between accounts"
+		t.DestinationId = "60"
 		break
 	case "З білої картки":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:         &transactionTypeTransfer,
-			Date:          time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:        strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description:   "Transfer between accounts",
-			Notes:         string(body),
-			SourceId:      account.Id,
-			DestinationId: "1",
-		})
+		t.Type_ = &transactionTypeTransfer
+		t.Description = "Transfer between accounts"
+		t.DestinationId = "1"
 		break
 	case "АТБ":
 	case "Велмарт":
@@ -125,14 +130,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	case "Glovo":
 	case "zakaz.ua":
 	case "Мегамаркет":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Groceries",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Groceries"
 		break
 	case "Аптека Доброго Дня":
 	case "Аптека оптових цін":
@@ -140,113 +138,45 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	case "Аптека Гала":
 	case "Аптека АНЦ":
 	case "APTEKA 7":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Medications",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Medications"
 		break
 	case "Київ Цифровий":
 	case "Київпастранс":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Public transport",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Public transport"
 		break
 	case "McDonald's":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "McDonalds",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "McDonalds"
 		break
 	case "LeoCafe":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Cafe",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Cafe"
 		break
 	case "Mafia":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Restaurant",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Restaurant"
 		break
 	case "Lumberjack Barberhouse":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Lumberjack: haircut",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Lumberjack: haircut"
 		break
 	case "Hetzner":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Hetzner: vps2",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Hetzner: vps2"
 	case "YouTube":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "YouTube membership: Latte ASMR",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "YouTube membership: Latte ASMR"
 	case "Київстар +380672463500":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Kyivstar: +380672463500",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Kyivstar: +380672463500"
 	case "Lifecell +380732463500":
-		transactionList = append(transactionList, firefly3.TransactionSplitStore{
-			Type_:       &transactionTypeWithdrawal,
-			Date:        time.Now(), // time.Unix(int64(time.Now()), 0)
-			Amount:      strconv.Itoa(transaction.Data.StatementItem.Amount / 100),
-			Description: "Lifecell: +380732463500",
-			Notes:       string(body),
-			SourceId:    account.Id,
-		})
+		t.Description = "Lifecell: +380732463500"
 		break
 	}
 
-	if len(transactionList) > 0 {
+	if len(t.Description) > 0 {
+		transactionList = append(transactionList, t)
+
 		transactionOpts := firefly3.TransactionsApiStoreTransactionOpts{}
 		_, _, err = client.TransactionsApi.StoreTransaction(ctx, firefly3.TransactionStore{
 			ApplyRules:   true,
 			Transactions: transactionList,
 		}, &transactionOpts)
 		if err != nil {
-			fmt.Println(err.Error())
+			logString(err.Error())
 			w.WriteHeader(http.StatusOK)
 			return
 		}
