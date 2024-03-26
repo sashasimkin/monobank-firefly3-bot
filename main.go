@@ -42,7 +42,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"pPnTnerhs6R3kEw2sQ\",\"time\":1711462716,\"description\":\"Сільпо\",\"mcc\":5411,\"originalMcc\":5411,\"amount\":-60300,\"operationAmount\":-60300,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":452,\"balance\":9143537,\"hold\":true,\"receiptId\":\"C1H6-8520-8T85-B17M\"}}}")
+	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"XKCZ__9Eaf0ihZ3Dwg\",\"time\":1711458930,\"description\":\"414950****7166\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":-249600,\"operationAmount\":-249600,\"currencyCode\":980,\"commissionRate\":9600,\"cashbackAmount\":0,\"balance\":9223637,\"hold\":true,\"receiptId\":\"8285-K777-PBHC-T9BX\"}}}")
 	LogString(string(body))
 
 	if len(string(body)) == 0 {
@@ -93,6 +93,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create transaction
+	var firefly3Transactions []firefly3.TransactionSplitStore
+
 	transactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
 	transactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
 
@@ -108,24 +110,39 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
 		firefly3Transaction.DestinationId = "60"
+		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else if slices.Contains([]string{"З білої картки"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
 		firefly3Transaction.DestinationId = "1"
+		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else {
 		for _, row := range ShopConfig {
 			if slices.Contains(row.Names, transaction.Data.StatementItem.Description) || slices.Contains(row.MCCCodes, transaction.Data.StatementItem.Mcc) {
 				firefly3Transaction.Description = row.TransactionDescription
+				firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 				break
 			}
 		}
 	}
 
-	if len(firefly3Transaction.Description) > 0 {
+	// record transfer fee
+	if transaction.Data.StatementItem.CommissionRate > 0 {
+		firefly3Transactions = append(firefly3Transactions, firefly3.TransactionSplitStore{
+			Type_:       &transactionTypeWithdrawal,
+			Date:        time.Unix(int64(transaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
+			Notes:       string(body),
+			Description: "Transfer fee",
+			Amount:      strconv.Itoa(int(math.Abs(math.Round(float64(transaction.Data.StatementItem.CommissionRate / 100))))),
+			SourceId:    account.Id,
+		})
+	}
+
+	if len(firefly3Transactions) > 0 {
 		transactionOpts := firefly3.TransactionsApiStoreTransactionOpts{}
 		_, _, err = client.TransactionsApi.StoreTransaction(ctx, firefly3.TransactionStore{
 			ApplyRules:   true,
-			Transactions: []firefly3.TransactionSplitStore{firefly3Transaction},
+			Transactions: firefly3Transactions,
 		}, &transactionOpts)
 		if err != nil {
 			LogString(err.Error())
