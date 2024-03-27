@@ -25,7 +25,9 @@ import (
 
 // curl -X POST https://monobank-firefly3.stuzer.link/webhook -H 'Content-TransactionType: application/json' -d '{"test":123}'
 
+// Configs
 var ShopConfig []ShopConfigItem
+var Firefy3AccountsConfig map[string]string
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	LogString("-----------------\nwebhook received!")
@@ -45,6 +47,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"5_NQ0arGAmp2pyNzvA\",\"time\":1711544958,\"description\":\"Ілля Ш.\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":-572000,\"operationAmount\":-572000,\"currencyCode\":980,\"commissionRate\":22000,\"cashbackAmount\":0,\"balance\":8101246,\"hold\":true,\"receiptId\":\"EMXC-P266-90PC-EB8C\"}}}")
 	LogString(string(body))
 
+	// check empty body
 	if len(string(body)) == 0 {
 		LogString("empty body")
 		w.WriteHeader(http.StatusOK)
@@ -78,13 +81,11 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	clientConf.AddDefaultHeader("Authorization", "Bearer "+os.Getenv("FIREFLY3_TOKEN"))
 	client := firefly3.NewAPIClient(clientConf)
 
-	ctx := context.Background()
-
 	// get firefly3 account
 	listOpts := firefly3.AccountsApiListAccountOpts{
 		Type_: optional.NewInterface("asset"),
 	}
-	accounts, _, err := client.AccountsApi.ListAccount(ctx, &listOpts)
+	accounts, _, err := client.AccountsApi.ListAccount(context.Background(), &listOpts)
 	if err != nil {
 		LogString(err.Error())
 		w.WriteHeader(http.StatusOK)
@@ -121,23 +122,24 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if slices.Contains([]string{"З чорної картки"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.DestinationId = "60"
+		firefly3Transaction.DestinationId = Firefy3AccountsConfig["Mono White"]
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else if slices.Contains([]string{"З білої картки"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.DestinationId = "1"
+		firefly3Transaction.DestinationId = Firefy3AccountsConfig["Mono Black"]
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else if slices.Contains([]string{"Термінал City24"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.SourceId = "4"
+		firefly3Transaction.SourceId = Firefy3AccountsConfig["Wallet cash (UAH)"]
 		firefly3Transaction.DestinationId = firefly3Transaction.SourceId
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else if slices.Contains([]string{"Банкомат DN00", "Термінал EasyPay", "City24", "Термінал City24"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.DestinationId = "4"
+		firefly3Transaction.SourceId = Firefy3AccountsConfig["Wallet cash (UAH)"] // test
+		firefly3Transaction.DestinationId = account.Id                            // test
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else {
 		for _, row := range ShopConfig {
@@ -163,17 +165,17 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// log firefly3 transactions
 	if len(firefly3Transactions) > 0 {
 		transactionOpts := firefly3.TransactionsApiStoreTransactionOpts{}
 
 		for _, transaction := range firefly3Transactions {
-			_, _, err = client.TransactionsApi.StoreTransaction(ctx, firefly3.TransactionStore{
+			_, _, err = client.TransactionsApi.StoreTransaction(context.Background(), firefly3.TransactionStore{
 				ApplyRules:   true,
 				Transactions: []firefly3.TransactionSplitStore{transaction},
 			}, &transactionOpts)
 			if err != nil {
 				LogString(err.Error())
-				fmt.Println(err.Error())
 				w.WriteHeader(http.StatusOK)
 				return
 			}
@@ -184,128 +186,19 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// load .env
 	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatalf("Error loading .env file")
 	}
 
-	/**
-	 * Bills
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Hetzner"},
-		TransactionDescription: "Hetzner: vps2",
-	})
+	// Configure
+	ShopConfig, Firefy3AccountsConfig = Configure()
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"YouTube"},
-		TransactionDescription: "YouTube membership: Latte ASMR",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Київстар +380672463500"},
-		TransactionDescription: "Kyivstar: +380672463500",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Lifecell +380732463500"},
-		TransactionDescription: "Lifecell: +380732463500",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"JetBrains"},
-		TransactionDescription: "JetBrains: GoLand",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Telegram"},
-		TransactionDescription: "Telegram premium",
-	})
-
-	/**
-	 * Credit payments
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Tefal Initial+"},
-		TransactionDescription: "Credit payment: TEFAL OptiGrill+ Initial GC706D34",
-		TransactionDestination: "Credit: TEFAL OptiGrill+ Initial GC706D34",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Dyson"},
-		TransactionDescription: "Credit payment: Dyson Supersonic HD07 Nickel/Copper",
-		TransactionDestination: "Credit: Dyson Supersonic HD07 Nickel/Copper",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Pixel Watch 2"},
-		TransactionDescription: "Credit payment: Google Pixel Watch 2 Wi-Fi",
-		TransactionDestination: "Credit: Google Pixel Watch 2 Wi-Fi",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Apple Watch 9"},
-		TransactionDescription: "Credit payment: Apple Watch Series 9",
-		TransactionDestination: "Credit: Apple Watch Series 9",
-	})
-
-	/**
-	 * People
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Олена А."},
-		TransactionDescription: "Doctor visit: Елена Ахрипова (психотерапевт)",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Ілля Ш."},
-		TransactionDescription: "Legal services: Alva Privacy Law Firm",
-		TransactionDestination: "Legal: Alva Privacy Law Firm",
-		TransactionCategory:    "Legal services",
-	})
-
-	/**
-	 * Other
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		MCCCodes:               []int{5411, 5499, 5451, 5422, 5412, 5921},
-		Names:                  []string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо", "Фора", "METRO"},
-		TransactionDescription: "Groceries",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "Біла ромашка", "vidshkod ekv apt12", "Будемо Здорові Разом", "Apteka Ants"},
-		TransactionDescription: "Medications",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		MCCCodes:               []int{4131, 4111, 4112},
-		Names:                  []string{"Київ Цифровий", "Київпастранс"},
-		TransactionDescription: "Public transport",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"McDonald’s"},
-		TransactionDescription: "McDonalds",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"LeoCafe"},
-		TransactionDescription: "Cafe",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Bolt food", "Glovo", "Menya Musashi"},
-		TransactionDescription: "Restaurant",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Lumberjack Barberhouse"},
-		TransactionDescription: "Lumberjack: haircut",
-	})
-
+	// set webhook
 	http.HandleFunc("/webhook", handleWebhook)
 
+	// listen server
 	fmt.Println("Webhook server listening on :3021")
 	err = http.ListenAndServe(":3021", nil)
 	if err != nil {
