@@ -35,7 +35,7 @@ func readResponseBody(r *http.Request) (monobank.Transaction, error) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"5_NQ0arGAmp2pyNzvA\",\"time\":1711544958,\"description\":\"Ілля Ш.\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":-572000,\"operationAmount\":-572000,\"currencyCode\":980,\"commissionRate\":22000,\"cashbackAmount\":0,\"balance\":8101246,\"hold\":true,\"receiptId\":\"EMXC-P266-90PC-EB8C\"}}}")
+	body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"5_NQ0arGAmp2pyNzvA\",\"time\":1711544958,\"description\":\"З чорної картки\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":-572000,\"operationAmount\":-572000,\"currencyCode\":980,\"commissionRate\":22000,\"cashbackAmount\":0,\"balance\":8101246,\"hold\":true,\"receiptId\":\"EMXC-P266-90PC-EB8C\"}}}")
 	LogString(string(body))
 
 	// check empty body
@@ -105,7 +105,6 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	var firefly3Transactions []firefly3.TransactionSplitStore
 
 	firefly3Transaction := firefly3.TransactionSplitStore{
-		Type_:    &firefly3TransactionTypeWithdrawal,
 		Date:     time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
 		Notes:    string(monobankTransactionJson),
 		Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate/100))))),
@@ -113,36 +112,26 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Special transaction cases
-	if slices.Contains([]string{"З чорної картки"}, monobankTransaction.Data.StatementItem.Description) {
+	if slices.Contains([]string{"Термінал EasyPay", "City24", "Термінал City24"}, monobankTransaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.DestinationId = ConfigGetAccountByName(config, "Mono White").Firefly3Id
-		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-	} else if slices.Contains([]string{"З білої картки"}, monobankTransaction.Data.StatementItem.Description) {
-		firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.DestinationId = ConfigGetAccountByName(config, "Mono Black").Firefly3Id
-		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-	} else if slices.Contains([]string{"Термінал City24"}, monobankTransaction.Data.StatementItem.Description) {
-		firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.SourceId = ConfigGetAccountByName(config, "Wallet cash (UAH)").Firefly3Id
-		firefly3Transaction.DestinationId = firefly3Transaction.SourceId
-		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-	} else if slices.Contains([]string{"Термінал EasyPay", "City24", "Термінал City24"}, monobankTransaction.Data.StatementItem.Description) {
-		firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.SourceId = ConfigGetAccountByName(config, "Wallet cash (UAH)").Firefly3Id // test
-		firefly3Transaction.DestinationId = account.Firefly3Id                                        // test
-		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-	} else if slices.Contains([]string{"Банкомат DN00"}, monobankTransaction.Data.StatementItem.Description) {
-		firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.DestinationId = ConfigGetAccountByName(config, "Wallet cash (UAH)").Firefly3Id // test
+		firefly3Transaction.SourceName = "Wallet cash (UAH)"   // test
+		firefly3Transaction.DestinationId = account.Firefly3Id // test
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else {
 		for _, row := range config.TransactionTypes {
 			if slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc) {
+				switch row.Firefly3.Type {
+				case "withdrawal":
+					firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+					break
+				case "transfer":
+					firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
+					break
+				default:
+					firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+				}
+
 				firefly3Transaction.Description = row.Firefly3.Description
 				firefly3Transaction.DestinationName = row.Firefly3.Destination
 				firefly3Transaction.CategoryName = row.Firefly3.Category

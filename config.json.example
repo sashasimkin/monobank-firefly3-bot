@@ -43,6 +43,14 @@
       "firefly3": {
         "description": "Groceries"
       }
-    }
+    },
+    {
+      "names": ["З чорної картки"],
+      "firefly3": {
+        "type": "transfer",
+        "description": "Transfer between accounts",
+        "destination": "Mono White"
+      }
+    },
   ]
 }

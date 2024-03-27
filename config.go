@@ -18,15 +18,16 @@ type ConfigAccount struct {
 }
 
 type ConfigTransactionTypes struct {
-	Names    []string                      `json:"names"`
-	Firefly3 ConfigTransactionTypeFirefly3 `json:"firefly3,omitempty"`
+	Names    []string                      `json:"names,omitempty"`
 	MccCodes []int                         `json:"mcc_codes,omitempty"`
+	Firefly3 ConfigTransactionTypeFirefly3 `json:"firefly3,omitempty"`
 }
 
 type ConfigTransactionTypeFirefly3 struct {
-	Description string `json:"description"`
-	Destination string `json:"destination"`
-	Category    string `json:"category"`
+	Type        string `json:"type,omitempty"`
+	Destination string `json:"destination,omitempty"`
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
 }
 
 func ReadConfig(path string) (Config, error) {
