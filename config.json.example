@@ -1,0 +1,48 @@
+{
+  "accounts": [
+      {
+        "name": "Card 1",
+        "firefly3_id": "1",
+        "monobank_id": "xxxxxxxxxxxxxxxxxxxxxx"
+      },
+      {
+        "name": "Card 2",
+        "firefly3_id": "2",
+        "monobank_id": "xxxxxxxxxxxxxxxxxxxxxx"
+      },
+      {
+        "name": "Card 3",
+        "firefly3_id": "3"
+      }
+  ],
+  "transaction_types": [
+    {
+      "names": ["Hetzner"],
+      "firefly3": {
+        "description": "Hetzner: vps2"
+      }
+    },
+    {
+      "names": ["Платіж Pixel Watch 2"],
+      "firefly3": {
+        "description": "Credit payment: Google Pixel Watch 2 Wi-Fi",
+        "destination": "Credit: Google Pixel Watch 2 Wi-Fi"
+      }
+    },
+    {
+      "names": ["Ілля Ш."],
+      "firefly3": {
+        "description": "Legal services: Alva Privacy Law Firm",
+        "destination": "Legal: Alva Privacy Law Firm",
+        "category": "Legal services"
+      }
+    },
+    {
+      "names": ["АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо", "Фора", "METRO"],
+      "mcc_codes": [5411, 5499, 5451, 5422, 5412, 5921],
+      "firefly3": {
+        "description": "Groceries"
+      }
+    }
+  ]
+}

@@ -1,130 +1,74 @@
 package main
 
-func Configure() ([]ShopConfigItem, map[string]string) {
-	var ShopConfig []ShopConfigItem
-	Firefy3AccountsConfig := make(map[string]string)
+import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+)
 
-	/**
-	 * Firefly3 accounts
-	 */
-	Firefy3AccountsConfig["Mono Black"] = "1"
-	Firefy3AccountsConfig["Mono White"] = "60"
-	Firefy3AccountsConfig["Wallet cash (UAH)"] = "4"
+type Config struct {
+	Accounts         []ConfigAccount          `json:"accounts"`
+	TransactionTypes []ConfigTransactionTypes `json:"transaction_types"`
+}
 
-	/**
-	 * Bills
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Hetzner"},
-		TransactionDescription: "Hetzner: vps2",
-	})
+type ConfigAccount struct {
+	Name       string `json:"name"`
+	Firefly3Id string `json:"firefly3_id,omitempty"`
+	MonobankId string `json:"monobank_id,omitempty"`
+}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"YouTube"},
-		TransactionDescription: "YouTube membership: Latte ASMR",
-	})
+type ConfigTransactionTypes struct {
+	Names    []string                      `json:"names"`
+	Firefly3 ConfigTransactionTypeFirefly3 `json:"firefly3,omitempty"`
+	MccCodes []int                         `json:"mcc_codes,omitempty"`
+}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Київстар +380672463500"},
-		TransactionDescription: "Kyivstar: +380672463500",
-	})
+type ConfigTransactionTypeFirefly3 struct {
+	Description string `json:"description"`
+	Destination string `json:"destination"`
+	Category    string `json:"category"`
+}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Lifecell +380732463500"},
-		TransactionDescription: "Lifecell: +380732463500",
-	})
+func ReadConfig(path string) (Config, error) {
+	var config Config
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"JetBrains"},
-		TransactionDescription: "JetBrains: GoLand",
-	})
+	// open file
+	file, err := os.Open(path)
+	if err != nil {
+		return config, err
+	}
+	defer file.Close()
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Telegram"},
-		TransactionDescription: "Telegram premium",
-	})
+	// read file
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return config, err
+	}
 
-	/**
-	 * Credit payments
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Tefal Initial+"},
-		TransactionDescription: "Credit payment: TEFAL OptiGrill+ Initial GC706D34",
-		TransactionDestination: "Credit: TEFAL OptiGrill+ Initial GC706D34",
-	})
+	// read file ot config struct
+	if err := json.Unmarshal(bytes, &config); err != nil {
+		return config, err
+	}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Dyson"},
-		TransactionDescription: "Credit payment: Dyson Supersonic HD07 Nickel/Copper",
-		TransactionDestination: "Credit: Dyson Supersonic HD07 Nickel/Copper",
-	})
+	return config, nil
+}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Pixel Watch 2"},
-		TransactionDescription: "Credit payment: Google Pixel Watch 2 Wi-Fi",
-		TransactionDestination: "Credit: Google Pixel Watch 2 Wi-Fi",
-	})
+func ConfigGetAccountByName(config Config, q string) ConfigAccount {
+	for _, row := range config.Accounts {
+		if row.Name == q {
+			return row
+		}
+	}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Платіж Apple Watch 9"},
-		TransactionDescription: "Credit payment: Apple Watch Series 9",
-		TransactionDestination: "Credit: Apple Watch Series 9",
-	})
+	return ConfigAccount{}
+}
 
-	/**
-	 * People
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Олена А."},
-		TransactionDescription: "Doctor visit: Елена Ахрипова (психотерапевт)",
-	})
+func ConfigGetAccountByMonobankId(config Config, q string) ConfigAccount {
+	for _, row := range config.Accounts {
+		if row.MonobankId == q {
+			return row
+		}
+	}
 
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Ілля Ш."},
-		TransactionDescription: "Legal services: Alva Privacy Law Firm",
-		TransactionDestination: "Legal: Alva Privacy Law Firm",
-		TransactionCategory:    "Legal services",
-	})
-
-	/**
-	 * Other
-	 */
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		MCCCodes:               []int{5411, 5499, 5451, 5422, 5412, 5921},
-		Names:                  []string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо", "Фора", "METRO"},
-		TransactionDescription: "Groceries",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "Біла ромашка", "vidshkod ekv apt12", "Будемо Здорові Разом", "Apteka Ants", "Аптека Шар@"},
-		TransactionDescription: "Medications",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		MCCCodes:               []int{4131, 4111, 4112},
-		Names:                  []string{"Київ Цифровий", "Київпастранс"},
-		TransactionDescription: "Public transport",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"McDonald’s"},
-		TransactionDescription: "McDonalds",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"LeoCafe"},
-		TransactionDescription: "Cafe",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Bolt food", "Glovo", "Menya Musashi"},
-		TransactionDescription: "Restaurant",
-	})
-
-	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Lumberjack Barberhouse"},
-		TransactionDescription: "Lumberjack: haircut",
-	})
-
-	return ShopConfig, Firefy3AccountsConfig
+	return ConfigAccount{}
 }
