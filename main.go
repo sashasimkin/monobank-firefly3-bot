@@ -33,8 +33,8 @@ func main() {
 	http.HandleFunc("/webhook", handleWebhook)
 
 	// listen server
-	fmt.Println("Webhook server listening on :3021") // @todo make env
-	err = http.ListenAndServe(":3021", nil)
+	fmt.Println("Webhook server listening on " + os.Getenv("LISTEN"))
+	err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
 	if err != nil {
 		panic(err.Error())
 	}
