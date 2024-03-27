@@ -191,11 +191,18 @@ func main() {
 		log.Fatalf("Error loading .env file")
 	}
 
+	// test config read
+	_, err = ReadConfig(os.Getenv("CONFIG_PATH"))
+	if err != nil {
+		fmt.Println("cannot read config - " + err.Error())
+		return
+	}
+
 	// set webhook
 	http.HandleFunc("/webhook", handleWebhook)
 
 	// listen server
-	fmt.Println("Webhook server listening on :3021")
+	fmt.Println("Webhook server listening on :3021") // @todo make env
 	err = http.ListenAndServe(":3021", nil)
 	if err != nil {
 		panic(err.Error())
