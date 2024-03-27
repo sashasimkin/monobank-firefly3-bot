@@ -135,11 +135,16 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		firefly3Transaction.SourceId = Firefy3AccountsConfig["Wallet cash (UAH)"]
 		firefly3Transaction.DestinationId = firefly3Transaction.SourceId
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-	} else if slices.Contains([]string{"Банкомат DN00", "Термінал EasyPay", "City24", "Термінал City24"}, transaction.Data.StatementItem.Description) {
+	} else if slices.Contains([]string{"Термінал EasyPay", "City24", "Термінал City24"}, transaction.Data.StatementItem.Description) {
 		firefly3Transaction.Type_ = &transactionTypeTransfer
 		firefly3Transaction.Description = "Transfer between accounts"
 		firefly3Transaction.SourceId = Firefy3AccountsConfig["Wallet cash (UAH)"] // test
 		firefly3Transaction.DestinationId = account.Id                            // test
+		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+	} else if slices.Contains([]string{"Банкомат DN00"}, transaction.Data.StatementItem.Description) {
+		firefly3Transaction.Type_ = &transactionTypeTransfer
+		firefly3Transaction.Description = "Transfer between accounts"
+		firefly3Transaction.DestinationId = Firefy3AccountsConfig["Wallet cash (UAH)"] // test
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else {
 		for _, row := range ShopConfig {
