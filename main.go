@@ -42,7 +42,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"XKCZ__9Eaf0ihZ3Dwg\",\"time\":1711458930,\"description\":\"414950****7166\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":-249600,\"operationAmount\":-249600,\"currencyCode\":980,\"commissionRate\":9600,\"cashbackAmount\":0,\"balance\":9223637,\"hold\":true,\"receiptId\":\"8285-K777-PBHC-T9BX\"}}}")
+	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"5_NQ0arGAmp2pyNzvA\",\"time\":1711544958,\"description\":\"Ілля Ш.\",\"mcc\":4829,\"originalMcc\":4829,\"amount\":-572000,\"operationAmount\":-572000,\"currencyCode\":980,\"commissionRate\":22000,\"cashbackAmount\":0,\"balance\":8101246,\"hold\":true,\"receiptId\":\"EMXC-P266-90PC-EB8C\"}}}")
 	LogString(string(body))
 
 	if len(string(body)) == 0 {
@@ -59,6 +59,18 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	//statement, err := requests.Statement(models2.StatementRequest{
+	//	Account: transaction.Data.Account,
+	//	From:    transaction.Data.StatementItem.Time,
+	//	To:      transaction.Data.StatementItem.Time,
+	//})
+	//if err != nil {
+	//	fmt.Printf("%+v", err.Error())
+	//	w.WriteHeader(http.StatusOK)
+	//	return
+	//}
+	//fmt.Printf("%+v", statement)
 
 	// init firefly3 client
 	clientConf := firefly3.NewConfiguration()
@@ -102,7 +114,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		Type_:    &transactionTypeWithdrawal,
 		Date:     time.Unix(int64(transaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
 		Notes:    string(body),
-		Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(transaction.Data.StatementItem.Amount / 100))))),
+		Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(transaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(transaction.Data.StatementItem.CommissionRate/100))))),
 		SourceId: account.Id,
 	}
 
@@ -120,6 +132,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		for _, row := range ShopConfig {
 			if slices.Contains(row.Names, transaction.Data.StatementItem.Description) || slices.Contains(row.MCCCodes, transaction.Data.StatementItem.Mcc) {
 				firefly3Transaction.Description = row.TransactionDescription
+				firefly3Transaction.DestinationName = row.TransactionDestination
+				firefly3Transaction.CategoryName = row.TransactionCategory
 				firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 				break
 			}
@@ -140,14 +154,18 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	if len(firefly3Transactions) > 0 {
 		transactionOpts := firefly3.TransactionsApiStoreTransactionOpts{}
-		_, _, err = client.TransactionsApi.StoreTransaction(ctx, firefly3.TransactionStore{
-			ApplyRules:   true,
-			Transactions: firefly3Transactions,
-		}, &transactionOpts)
-		if err != nil {
-			LogString(err.Error())
-			w.WriteHeader(http.StatusOK)
-			return
+
+		for _, transaction := range firefly3Transactions {
+			_, _, err = client.TransactionsApi.StoreTransaction(ctx, firefly3.TransactionStore{
+				ApplyRules:   true,
+				Transactions: []firefly3.TransactionSplitStore{transaction},
+			}, &transactionOpts)
+			if err != nil {
+				LogString(err.Error())
+				fmt.Println(err.Error())
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 		}
 	}
 
@@ -186,6 +204,16 @@ func main() {
 	ShopConfig = append(ShopConfig, ShopConfigItem{
 		Names:                  []string{"JetBrains"},
 		TransactionDescription: "JetBrains: GoLand",
+	})
+
+	/**
+	 * People
+	 */
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Ілля Ш."},
+		TransactionDescription: "Legal services: Alva Privacy Law Firm",
+		TransactionDestination: "Legal: Alva Privacy Law Firm",
+		TransactionCategory:    "Legal services",
 	})
 
 	/**

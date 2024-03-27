@@ -9,7 +9,7 @@ import (
 func ClientInfo() (models2.ClientInfo, error) {
 	data := models2.ClientInfo{}
 
-	responseJson, err := monobank.Request("GET", "https://firefly3.monobank.ua/personal/client-info", struct{}{})
+	responseJson, err := monobank.Request("GET", "https://api.monobank.ua/personal/client-info", struct{}{})
 	if err != nil {
 		return data, err
 	}

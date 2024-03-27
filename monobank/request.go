@@ -21,7 +21,7 @@ func Request(method string, url string, data interface{}) (string, error) {
 		return "", err
 	}
 
-	r.Header.Add("Accept", "application/vnd.firefly3+json")
+	r.Header.Add("Accept", "application/vnd.api+json")
 	r.Header.Add("Content-Type", "application/json")
 	r.Header.Add("X-Token", apiMonabankToken)
 
