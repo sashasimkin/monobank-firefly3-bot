@@ -128,6 +128,17 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		firefly3Transaction.Description = "Transfer between accounts"
 		firefly3Transaction.DestinationId = "1"
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+	} else if slices.Contains([]string{"Термінал City24"}, transaction.Data.StatementItem.Description) {
+		firefly3Transaction.Type_ = &transactionTypeTransfer
+		firefly3Transaction.Description = "Transfer between accounts"
+		firefly3Transaction.SourceId = "4"
+		firefly3Transaction.DestinationId = firefly3Transaction.SourceId
+		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+	} else if slices.Contains([]string{"Банкомат DN00", "Термінал EasyPay", "City24", "Термінал City24"}, transaction.Data.StatementItem.Description) {
+		firefly3Transaction.Type_ = &transactionTypeTransfer
+		firefly3Transaction.Description = "Transfer between accounts"
+		firefly3Transaction.DestinationId = "4"
+		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else {
 		for _, row := range ShopConfig {
 			if slices.Contains(row.Names, transaction.Data.StatementItem.Description) || slices.Contains(row.MCCCodes, transaction.Data.StatementItem.Mcc) {
@@ -206,9 +217,46 @@ func main() {
 		TransactionDescription: "JetBrains: GoLand",
 	})
 
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Telegram"},
+		TransactionDescription: "Telegram premium",
+	})
+
+	/**
+	 * Credit payments
+	 */
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Платіж Tefal Initial+"},
+		TransactionDescription: "Credit payment: TEFAL OptiGrill+ Initial GC706D34",
+		TransactionDestination: "Credit: TEFAL OptiGrill+ Initial GC706D34",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Платіж Dyson"},
+		TransactionDescription: "Credit payment: Dyson Supersonic HD07 Nickel/Copper",
+		TransactionDestination: "Credit: Dyson Supersonic HD07 Nickel/Copper",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Платіж Pixel Watch 2"},
+		TransactionDescription: "Credit payment: Google Pixel Watch 2 Wi-Fi",
+		TransactionDestination: "Credit: Google Pixel Watch 2 Wi-Fi",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Платіж Apple Watch 9"},
+		TransactionDescription: "Credit payment: Apple Watch Series 9",
+		TransactionDestination: "Credit: Apple Watch Series 9",
+	})
+
 	/**
 	 * People
 	 */
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Олена А."},
+		TransactionDescription: "Doctor visit: Елена Ахрипова (психотерапевт)",
+	})
+
 	ShopConfig = append(ShopConfig, ShopConfigItem{
 		Names:                  []string{"Ілля Ш."},
 		TransactionDescription: "Legal services: Alva Privacy Law Firm",
@@ -221,19 +269,19 @@ func main() {
 	 */
 	ShopConfig = append(ShopConfig, ShopConfigItem{
 		MCCCodes:               []int{5411, 5499, 5451, 5422, 5412, 5921},
-		Names:                  []string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо"},
+		Names:                  []string{"АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо", "Фора", "METRO"},
 		TransactionDescription: "Groceries",
 	})
 
 	ShopConfig = append(ShopConfig, ShopConfigItem{
-		Names:                  []string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "vidshkod ekv apt12"},
+		Names:                  []string{"Аптека Доброго Дня", "Аптека оптових цін", "Аптека Копійка", "Аптека Гала", "Аптека АНЦ", "APTEKA 7", "Біла ромашка", "vidshkod ekv apt12", "Будемо Здорові Разом", "Apteka Ants"},
 		TransactionDescription: "Medications",
 	})
 
 	ShopConfig = append(ShopConfig, ShopConfigItem{
 		MCCCodes:               []int{4131, 4111, 4112},
 		Names:                  []string{"Київ Цифровий", "Київпастранс"},
-		TransactionDescription: "Medications",
+		TransactionDescription: "Public transport",
 	})
 
 	ShopConfig = append(ShopConfig, ShopConfigItem{
@@ -244,6 +292,11 @@ func main() {
 	ShopConfig = append(ShopConfig, ShopConfigItem{
 		Names:                  []string{"LeoCafe"},
 		TransactionDescription: "Cafe",
+	})
+
+	ShopConfig = append(ShopConfig, ShopConfigItem{
+		Names:                  []string{"Bolt food", "Glovo", "Menya Musashi"},
+		TransactionDescription: "Restaurant",
 	})
 
 	ShopConfig = append(ShopConfig, ShopConfigItem{
