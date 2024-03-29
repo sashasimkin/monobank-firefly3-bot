@@ -52,5 +52,12 @@
         "destination": "Mono White"
       }
     },
+    {
+      "names": ["Novapay"],
+      "firefly3": {
+        "description": "NovaPoshta: delivery"
+      },
+      "sum_max": 150
+    }
   ]
 }

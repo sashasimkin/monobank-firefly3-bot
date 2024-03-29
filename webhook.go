@@ -81,22 +81,27 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	} else {
 		for _, row := range config.TransactionTypes {
 			if slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc) {
-				switch row.Firefly3.Type {
-				case "withdrawal":
-					firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-					break
-				case "transfer":
-					firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-					break
-				default:
-					firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-				}
+				sum, _ := strconv.Atoi(firefly3Transaction.Amount)
 
-				firefly3Transaction.Description = row.Firefly3.Description
-				firefly3Transaction.DestinationName = row.Firefly3.Destination
-				firefly3Transaction.CategoryName = row.Firefly3.Category
-				firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-				break
+				// check max sum
+				if row.SumMax == 0 || sum <= row.SumMax {
+					switch row.Firefly3.Type {
+					case "withdrawal":
+						firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+						break
+					case "transfer":
+						firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
+						break
+					default:
+						firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+					}
+
+					firefly3Transaction.Description = row.Firefly3.Description
+					firefly3Transaction.DestinationName = row.Firefly3.Destination
+					firefly3Transaction.CategoryName = row.Firefly3.Category
+					firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+					break
+				}
 			}
 		}
 	}
