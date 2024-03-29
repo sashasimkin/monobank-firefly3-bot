@@ -17,6 +17,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	firefly3TransactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
+	firefly3TransactionTypeDeposit := firefly3.DEPOSIT_TransactionTypeProperty
 	firefly3TransactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
 
 	// read request
@@ -80,29 +81,37 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 	} else {
 		for _, row := range config.TransactionTypes {
-			if slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc) {
-				sum, _ := strconv.Atoi(firefly3Transaction.Amount)
-
-				// check max sum
-				if row.SumMax == 0 || sum <= row.SumMax {
-					switch row.Firefly3.Type {
-					case "withdrawal":
-						firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-						break
-					case "transfer":
-						firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-						break
-					default:
-						firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-					}
-
-					firefly3Transaction.Description = row.Firefly3.Description
-					firefly3Transaction.DestinationName = row.Firefly3.Destination
-					firefly3Transaction.CategoryName = row.Firefly3.Category
-					firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-					break
-				}
+			// check name & mcc
+			if !(slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc)) {
+				continue
 			}
+
+			// check max sum
+			sum, _ := strconv.Atoi(firefly3Transaction.Amount)
+			if row.SumMax > 0 && sum > row.SumMax {
+				continue
+			}
+
+			// make transaction
+			switch row.Firefly3.Type {
+			case "withdrawal":
+				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+				break
+			case "deposit":
+				firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
+				break
+			case "transfer":
+				firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
+				break
+			default:
+				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+			}
+
+			firefly3Transaction.Description = row.Firefly3.Description
+			firefly3Transaction.DestinationName = row.Firefly3.Destination
+			firefly3Transaction.CategoryName = row.Firefly3.Category
+			firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+			break
 		}
 	}
 
