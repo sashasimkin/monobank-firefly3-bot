@@ -25,10 +25,11 @@ type ConfigTransactionTypes struct {
 }
 
 type ConfigTransactionTypeFirefly3 struct {
-	Type        string `json:"type,omitempty"`
-	Destination string `json:"destination,omitempty"`
-	Description string `json:"description,omitempty"`
-	Category    string `json:"category,omitempty"`
+	Type                     string `json:"type,omitempty"`
+	Destination              string `json:"destination,omitempty"`
+	Description              string `json:"description,omitempty"`
+	Category                 string `json:"category,omitempty"`
+	IsUseDestinationAsSource bool   `json:"is_use_destination_as_source,omitempty"`
 }
 
 func ReadConfig(path string) (Config, error) {

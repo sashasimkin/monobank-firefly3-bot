@@ -53,6 +53,15 @@
       }
     },
     {
+      "names": ["Термінал EasyPay", "City24", "Термінал City24"],
+      "firefly3": {
+        "type": "transfer",
+        "description": "Transfer between accounts",
+        "destination": "Wallet cash (UAH)",
+        "is_use_destination_as_source": true
+      }
+    },
+    {
       "names": ["Novapay"],
       "firefly3": {
         "description": "NovaPoshta: delivery"

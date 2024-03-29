@@ -72,47 +72,44 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		SourceId: account.Firefly3Id,
 	}
 
-	// Special transaction cases
-	if slices.Contains([]string{"Термінал EasyPay", "City24", "Термінал City24"}, monobankTransaction.Data.StatementItem.Description) {
-		firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-		firefly3Transaction.Description = "Transfer between accounts"
-		firefly3Transaction.SourceName = "Wallet cash (UAH)"   // test
-		firefly3Transaction.DestinationId = account.Firefly3Id // test
-		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-	} else {
-		for _, row := range config.TransactionTypes {
-			// check name & mcc
-			if !(slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc)) {
-				continue
-			}
-
-			// check max sum
-			sum, _ := strconv.Atoi(firefly3Transaction.Amount)
-			if row.SumMax > 0 && sum > row.SumMax {
-				continue
-			}
-
-			// make transaction
-			switch row.Firefly3.Type {
-			case "withdrawal":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-				break
-			case "deposit":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
-				break
-			case "transfer":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-				break
-			default:
-				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-			}
-
-			firefly3Transaction.Description = row.Firefly3.Description
-			firefly3Transaction.DestinationName = row.Firefly3.Destination
-			firefly3Transaction.CategoryName = row.Firefly3.Category
-			firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
-			break
+	// match transaction with config
+	for _, row := range config.TransactionTypes {
+		// check name & mcc
+		if !(slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc)) {
+			continue
 		}
+
+		// check max sum
+		sum, _ := strconv.Atoi(firefly3Transaction.Amount)
+		if row.SumMax > 0 && sum > row.SumMax {
+			continue
+		}
+
+		// make transaction
+		switch row.Firefly3.Type {
+		case "withdrawal":
+			firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+			break
+		case "deposit":
+			firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
+			break
+		case "transfer":
+			firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
+			break
+		default:
+			firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+		}
+
+		firefly3Transaction.Description = row.Firefly3.Description
+		firefly3Transaction.DestinationName = row.Firefly3.Destination
+		firefly3Transaction.CategoryName = row.Firefly3.Category
+		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+
+		// swap source and destination
+		if row.Firefly3.IsUseDestinationAsSource {
+			firefly3Transaction.SourceName, firefly3Transaction.DestinationName = firefly3Transaction.DestinationName, firefly3Transaction.SourceName
+		}
+		break
 	}
 
 	// record transfer fee
