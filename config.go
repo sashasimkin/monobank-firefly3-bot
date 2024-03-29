@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 )
 
@@ -43,7 +43,7 @@ func ReadConfig(path string) (Config, error) {
 	defer file.Close()
 
 	// read file
-	bytes, err := ioutil.ReadAll(file)
+	bytes, err := io.ReadAll(file)
 	if err != nil {
 		return config, err
 	}
