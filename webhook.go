@@ -85,7 +85,12 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// find matching transaction to delete
+			isDeleted := false
 			for _, tRows := range oldTransactions.Data {
+				if isDeleted {
+					break
+				}
+
 				for _, tRow := range tRows.Attributes.Transactions {
 					// validate notes is json
 					notesBytes := bytes.NewBufferString(tRow.Notes).Bytes()
@@ -107,6 +112,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 						// delete transaction
 						opts := firefly3.TransactionsApiDeleteTransactionOpts{}
 						firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
+
+						isDeleted = true
 					}
 				}
 			}

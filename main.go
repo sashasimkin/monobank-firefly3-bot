@@ -1,11 +1,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
+	"io"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 )
 
 // https://api.monobank.ua/docs/index.html#tag/Kliyentski-personalni-dani/paths/~1personal~1statement~1{account}~1{from}~1{to}/get
@@ -29,13 +33,38 @@ func main() {
 		return
 	}
 
-	// set webhook
-	http.HandleFunc("/webhook", handleWebhook)
+	// flags
+	flagDoTransaction := flag.String("monobank-transaction", "", "run monobank transaction JSON manually")
 
-	// listen server
-	fmt.Println("Webhook server listening on " + os.Getenv("LISTEN"))
-	err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
-	if err != nil {
-		panic(err.Error())
+	flag.Parse()
+
+	// manual transaction
+	if len(*flagDoTransaction) > 0 {
+		w := httptest.NewRecorder()
+
+		r := &http.Request{
+			Method: http.MethodPost,
+			Header: make(http.Header),
+			Body:   io.NopCloser(strings.NewReader(*flagDoTransaction)),
+		}
+		r.Header.Set("Content-Type", "application/json")
+
+		handleWebhook(w, r)
+
+		// @todo error logging
+		//response := w.Result()
+		//if response.StatusCode != http.StatusOK {
+		//	os.Exit(1)
+		//}
+	} else {
+		// set webhook
+		http.HandleFunc("/webhook", handleWebhook)
+
+		// listen server
+		fmt.Println("Webhook server listening on " + os.Getenv("LISTEN"))
+		err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
+		if err != nil {
+			panic(err.Error())
+		}
 	}
 }
