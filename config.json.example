@@ -67,6 +67,13 @@
         "description": "NovaPoshta: delivery"
       },
       "sum_max": 150
+    },
+    {
+      "names": ["Bolt"],
+      "names_refund": ["Скасування. Bolt"],
+      "firefly3": {
+        "description": "Taxi: Bolt"
+      }
     }
   ]
 }

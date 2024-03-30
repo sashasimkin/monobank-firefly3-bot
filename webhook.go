@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/antihax/optional"
 	"main/firefly3"
 	monobank "main/monobank/api/webhook/models"
 	"math"
@@ -62,54 +64,99 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	clientConf.AddDefaultHeader("Authorization", "Bearer "+os.Getenv("FIREFLY3_TOKEN"))
 	firefly3Client := firefly3.NewAPIClient(clientConf)
 
-	// create firefly3 transaction
+	// create firefly3 transactions list
 	var firefly3Transactions []firefly3.TransactionSplitStore
-
-	firefly3Transaction := firefly3.TransactionSplitStore{
-		Date:     time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
-		Notes:    string(monobankTransactionJson),
-		Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate/100))))),
-		SourceId: account.Firefly3Id,
-	}
 
 	// match transaction with config
 	for _, row := range config.TransactionTypes {
-		// check name & mcc
-		if !(slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc)) {
-			continue
-		}
 
-		// check max sum
-		sum, _ := strconv.Atoi(firefly3Transaction.Amount)
-		if row.SumMax > 0 && sum > row.SumMax {
-			continue
-		}
+		// is refund
+		if slices.Contains(row.NamesRefund, monobankTransaction.Data.StatementItem.Description) {
+			opts := firefly3.TransactionsApiListTransactionOpts{
+				Limit: optional.NewInt32(999),
+				Type_: optional.NewInterface("withdrawal"),
+				Start: optional.NewString(time.Now().AddDate(0, 0, -7).Format("2006-01-02")), // one week before
+			}
+			oldTransactions, _, err := firefly3Client.TransactionsApi.ListTransaction(context.Background(), &opts)
+			if err != nil {
+				LogString(err.Error())
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 
-		// make transaction
-		switch row.Firefly3.Type {
-		case "withdrawal":
-			firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+			// find matching transaction to delete
+			for _, tRows := range oldTransactions.Data {
+				for _, tRow := range tRows.Attributes.Transactions {
+					// validate notes is json
+					notesBytes := bytes.NewBufferString(tRow.Notes).Bytes()
+					if !json.Valid(notesBytes) {
+						continue
+					}
+
+					// read monobank transaction
+					var monobankTransaction monobank.Transaction
+					err = json.Unmarshal(notesBytes, &monobankTransaction)
+					if err != nil {
+						continue
+					}
+
+					// find transaction
+					sum := int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate/100))))
+					sum2, _ := strconv.ParseFloat(tRow.Amount, 64)
+					if slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) && sum == int(sum2) {
+						// delete transaction
+						opts := firefly3.TransactionsApiDeleteTransactionOpts{}
+						firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
+					}
+				}
+			}
 			break
-		case "deposit":
-			firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
-			break
-		case "transfer":
-			firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-			break
-		default:
-			firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-		}
+		} else {
+			// check name & mcc
+			if !(slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, monobankTransaction.Data.StatementItem.Mcc)) {
+				continue
+			}
 
-		firefly3Transaction.Description = row.Firefly3.Description
-		firefly3Transaction.DestinationName = row.Firefly3.Destination
-		firefly3Transaction.CategoryName = row.Firefly3.Category
-		firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+			// create firefly3 transaction
+			firefly3Transaction := firefly3.TransactionSplitStore{
+				Date:     time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
+				Notes:    string(monobankTransactionJson),
+				Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate/100))))),
+				SourceId: account.Firefly3Id,
+			}
 
-		// swap source and destination
-		if row.Firefly3.IsUseDestinationAsSource {
-			firefly3Transaction.SourceName, firefly3Transaction.DestinationName = firefly3Transaction.DestinationName, firefly3Transaction.SourceName
+			// check max sum
+			sum, _ := strconv.Atoi(firefly3Transaction.Amount)
+			if row.SumMax > 0 && sum > row.SumMax {
+				continue
+			}
+			// make transaction
+			switch row.Firefly3.Type {
+			case "withdrawal":
+				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+				break
+			case "deposit":
+				firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
+				break
+			case "transfer":
+				firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
+				break
+			default:
+				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+			}
+
+			firefly3Transaction.Description = row.Firefly3.Description
+			firefly3Transaction.DestinationName = row.Firefly3.Destination
+			firefly3Transaction.CategoryName = row.Firefly3.Category
+
+			// swap source and destination
+			if row.Firefly3.IsUseDestinationAsSource {
+				firefly3Transaction.SourceName, firefly3Transaction.DestinationName = firefly3Transaction.DestinationName, firefly3Transaction.SourceName
+			}
+
+			firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+			break
 		}
-		break
 	}
 
 	// record transfer fee

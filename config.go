@@ -18,10 +18,11 @@ type ConfigAccount struct {
 }
 
 type ConfigTransactionTypes struct {
-	Names    []string                      `json:"names,omitempty"`
-	MccCodes []int                         `json:"mcc_codes,omitempty"`
-	Firefly3 ConfigTransactionTypeFirefly3 `json:"firefly3,omitempty"`
-	SumMax   int                           `json:"sum_max,omitempty"`
+	Names       []string                      `json:"names,omitempty"`
+	NamesRefund []string                      `json:"names_refund,omitempty"`
+	MccCodes    []int                         `json:"mcc_codes,omitempty"`
+	Firefly3    ConfigTransactionTypeFirefly3 `json:"firefly3,omitempty"`
+	SumMax      int                           `json:"sum_max,omitempty"`
 }
 
 type ConfigTransactionTypeFirefly3 struct {
