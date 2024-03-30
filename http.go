@@ -18,7 +18,7 @@ func readResponseBody(r *http.Request) (monobank.Transaction, error) {
 	//w.WriteHeader(http.StatusOK)
 	//return
 
-	body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"cSMr2xlFsfWPFeDLTg\",\"time\":1711806353,\"description\":\"Скасування. Bolt\",\"mcc\":4121,\"originalMcc\":4121,\"amount\":10300,\"operationAmount\":10300,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":7974533,\"hold\":false}}}")
+	//body = []byte("{\"type\":\"StatementItem\",\"data\":{\"account\":\"4723djMLsLOCzhoeYjxqRw\",\"statementItem\":{\"id\":\"cSMr2xlFsfWPFeDLTg\",\"time\":1711806353,\"description\":\"Скасування. Bolt\",\"mcc\":4121,\"originalMcc\":4121,\"amount\":10300,\"operationAmount\":10300,\"currencyCode\":980,\"commissionRate\":0,\"cashbackAmount\":0,\"balance\":7974533,\"hold\":false}}}")
 	LogString(string(body))
 
 	// check empty body
