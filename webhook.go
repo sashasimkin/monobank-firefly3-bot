@@ -158,8 +158,6 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-
-	// record transfer fee
 	if monobankTransaction.Data.StatementItem.CommissionRate > 0 {
 		firefly3Transactions = append(firefly3Transactions, firefly3.TransactionSplitStore{
 			Type_:       &firefly3TransactionTypeWithdrawal,
