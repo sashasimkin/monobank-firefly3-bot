@@ -12,9 +12,8 @@ type Config struct {
 }
 
 type ConfigAccount struct {
-	Name       string `json:"name"`
-	Firefly3Id string `json:"firefly3_id,omitempty"`
-	MonobankId string `json:"monobank_id,omitempty"`
+	Firefly3Name string `json:"firefly3_name,omitempty"`
+	MonobankId   string `json:"monobank_id,omitempty"`
 }
 
 type ConfigTransactionTypes struct {
@@ -55,16 +54,6 @@ func ReadConfig(path string) (Config, error) {
 	}
 
 	return config, nil
-}
-
-func ConfigGetAccountByName(config Config, q string) ConfigAccount {
-	for _, row := range config.Accounts {
-		if row.Name == q {
-			return row
-		}
-	}
-
-	return ConfigAccount{}
 }
 
 func ConfigGetAccountByMonobankId(config Config, q string) ConfigAccount {

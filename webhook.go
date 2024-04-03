@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/antihax/optional"
 	"main/firefly3"
 	monobank "main/monobank/api/webhook/models"
@@ -52,7 +53,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	account := ConfigGetAccountByMonobankId(config, monobankTransaction.Data.Account)
 
 	// cancel if one of account ids is empty
-	if len(account.Firefly3Id) == 0 || len(account.MonobankId) == 0 {
+	if len(account.Firefly3Name) == 0 || len(account.MonobankId) == 0 {
 		LogString("cannot find firefly3 or monobank ids (" + monobankTransaction.Data.Account + ")")
 		w.WriteHeader(http.StatusOK)
 		return
@@ -126,10 +127,10 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 			// create firefly3 transaction
 			firefly3Transaction := firefly3.TransactionSplitStore{
-				Date:     time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
-				Notes:    string(monobankTransactionJson),
-				Amount:   strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate/100))))),
-				SourceId: account.Firefly3Id,
+				Date:       time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
+				Notes:      string(monobankTransactionJson),
+				Amount:     strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate/100))))),
+				SourceName: account.Firefly3Name,
 			}
 
 			// check max sum
@@ -172,7 +173,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			Notes:       string(monobankTransactionJson),
 			Description: "Transfer fee",
 			Amount:      strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.StatementItem.CommissionRate / 100))))),
-			SourceId:    account.Firefly3Id,
+			SourceName:  account.Firefly3Name,
 		})
 	}
 
@@ -186,7 +187,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 				Transactions: []firefly3.TransactionSplitStore{transaction},
 			}, &transactionOpts)
 			if err != nil {
-				LogString(err.Error())
+				fmt.Printf(err.Error())
 				w.WriteHeader(http.StatusOK)
 				return
 			}
