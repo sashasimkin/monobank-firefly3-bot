@@ -25,7 +25,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// read request
 	var monobankTransaction monobank.Transaction
-	monobankTransaction, err = readResponseBody(r)
+	monobankTransaction, err = readRequestBody(r)
 	if err != nil {
 		LogString(err.Error())
 		w.WriteHeader(http.StatusOK)

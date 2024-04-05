@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	monobank "stuzer.link/monobank-firefly3-bot/monobank/api/webhook/models"
 )
 
-func readResponseBody(r *http.Request) (monobank.Transaction, error) {
+func readRequestBody(r *http.Request) (monobank.Transaction, error) {
 	// read body bytes
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -18,7 +19,7 @@ func readResponseBody(r *http.Request) (monobank.Transaction, error) {
 
 	// check empty body
 	if len(string(body)) == 0 {
-		return monobank.Transaction{}, err
+		return monobank.Transaction{}, errors.New("empty body")
 	}
 
 	// parse body
