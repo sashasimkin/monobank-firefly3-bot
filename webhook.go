@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/antihax/optional"
-	"main/firefly3"
-	monobank "main/monobank/api/webhook/models"
 	"math"
 	"net/http"
 	"os"
 	"slices"
 	"strconv"
+	"stuzer.link/monobank-firefly-bot/firefly3"
+	monobank "stuzer.link/monobank-firefly-bot/monobank/api/webhook/models"
 	"time"
 )
 
