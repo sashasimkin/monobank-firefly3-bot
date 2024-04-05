@@ -23,7 +23,7 @@ func main() {
 	// load .env
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatalf("Error loading .env file")
+		log.Fatalf("error loading .env file")
 	}
 
 	// test config read
@@ -60,7 +60,7 @@ func main() {
 		http.HandleFunc("/webhook", handleWebhook)
 
 		// listen server
-		fmt.Println("Webhook server listening on " + os.Getenv("LISTEN"))
+		fmt.Println("webhook server listening on " + os.Getenv("LISTEN"))
 		err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
 		if err != nil {
 			log.Fatalf(err.Error())
