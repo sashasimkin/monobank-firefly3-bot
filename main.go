@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
@@ -15,9 +16,9 @@ import (
 // https://api.monobank.ua/docs/index.html#tag/Kliyentski-personalni-dani/paths/~1personal~1statement~1{account}~1{from}~1{to}/get
 // https://api-docs.firefly-iii.org/#/accounts/listAccount
 
-// curl -X POST https://api.monobank.ua/personal/webhook -H 'Content-TransactionType: application/json' -H 'X-Token: ' -d '{"webHookUrl":"https://monobank-firefly3.stuzer.link/webhook"}'
+// curl -X POST https://api.monobank.ua/personal/webhook -H 'Content-Type: application/json' -H 'X-Token: ' -d '{"webHookUrl":"https://monobank-firefly3.stuzer.link/webhook"}'
 
-// curl -X POST https://monobank-firefly3.stuzer.link/webhook -H 'Content-TransactionType: application/json' -d '{"test":123}'
+// curl -X POST https://monobank-firefly3.io.stuzer.link/webhook -H 'Content-Type: application/json' -d '{"test":123}'
 
 func main() {
 	// load .env
@@ -56,11 +57,34 @@ func main() {
 		//	os.Exit(1)
 		//}
 	} else {
+		webhookLocalUrl := "/webhook/" + os.Getenv("MONOBANK_WEBHOOK_SECRET")
+		webhookUrl := `https://` + os.Getenv("MONOBANK_WEBHOOK_DOMAIN") + webhookLocalUrl
+
+		// register monobank webhook
+		req, err := http.NewRequest("POST", "https://api.monobank.ua/personal/webhook", bytes.NewBuffer([]byte(`{"webHookUrl":"`+webhookUrl+`"}`)))
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		req.Header.Add("Content-Type", "application/json")
+		req.Header.Add("X-Token", os.Getenv("MONOBANK_TOKEN"))
+
+		res, err := (&http.Client{}).Do(req)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		if res.StatusCode != http.StatusOK {
+			log.Fatalf("failed to register monobank webhook")
+		}
+		res.Body.Close()
+
 		// set webhook
-		http.HandleFunc("/webhook", handleWebhook)
+		http.HandleFunc(webhookLocalUrl, handleWebhook)
 
 		// listen server
 		fmt.Println("webhook server listening on " + os.Getenv("LISTEN"))
+		fmt.Println("webhook url " + webhookUrl)
 		err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
 		if err != nil {
 			log.Fatalf(err.Error())
