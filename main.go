@@ -29,8 +29,7 @@ func main() {
 	// test config read
 	_, err = ReadConfig(os.Getenv("CONFIG_PATH"))
 	if err != nil {
-		fmt.Println("cannot read config - " + err.Error())
-		return
+		log.Fatalf("cannot read config - " + err.Error())
 	}
 
 	// flags
@@ -64,7 +63,7 @@ func main() {
 		fmt.Println("Webhook server listening on " + os.Getenv("LISTEN"))
 		err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
 		if err != nil {
-			panic(err.Error())
+			log.Fatalf(err.Error())
 		}
 	}
 }
