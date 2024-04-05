@@ -11,8 +11,8 @@ import (
 	"os"
 	"slices"
 	"strconv"
-	"stuzer.link/monobank-firefly-bot/firefly3"
-	monobank "stuzer.link/monobank-firefly-bot/monobank/api/webhook/models"
+	"stuzer.link/monobank-firefly3-bot/firefly3"
+	monobank "stuzer.link/monobank-firefly3-bot/monobank/api/webhook/models"
 	"time"
 )
 

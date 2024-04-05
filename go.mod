@@ -1,4 +1,4 @@
-module stuzer.link/monobank-firefly-bot
+module stuzer.link/monobank-firefly3-bot
 
 go 1.22.1
 

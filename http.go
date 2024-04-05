@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	monobank "stuzer.link/monobank-firefly-bot/monobank/api/webhook/models"
+	monobank "stuzer.link/monobank-firefly3-bot/monobank/api/webhook/models"
 )
 
 func readResponseBody(r *http.Request) (monobank.Transaction, error) {
