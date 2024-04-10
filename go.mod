@@ -1,16 +1,11 @@
 module stuzer.link/monobank-firefly3-bot
 
-go 1.22.1
+go 1.22.2
 
 require (
+	gitea.stuzer.link/stuzer05/go-firefly3.git v0.0.0-20240410091455-7a9f9e825950
 	github.com/antihax/optional v1.0.0
 	github.com/joho/godotenv v1.5.1
-	golang.org/x/oauth2 v0.18.0
 )
 
-require (
-	github.com/golang/protobuf v1.5.3 // indirect
-	golang.org/x/net v0.22.0 // indirect
-	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
-)
+require golang.org/x/oauth2 v0.19.0 // indirect
