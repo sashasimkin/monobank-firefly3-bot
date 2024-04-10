@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	monobank "github.com/vtopc/go-monobank"
+	"gitea.stuzer.link/stuzer05/go-monobank"
 	"io"
 	"net/http"
 )

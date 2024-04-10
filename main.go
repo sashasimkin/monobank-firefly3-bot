@@ -1,11 +1,10 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
+	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/joho/godotenv"
-	monobank "github.com/vtopc/go-monobank"
 	"io"
 	"log"
 	"net/http"
@@ -62,8 +61,13 @@ func main() {
 		webhookUrl := `https://` + os.Getenv("MONOBANK_WEBHOOK_DOMAIN") + webhookLocalUrl
 
 		// register monobank webhook
-		monobankClient := monobank.NewPersonalClient(nil).WithAuth(monobank.NewPersonalAuthorizer(os.Getenv("MONOBANK_TOKEN")))
-		err := monobankClient.SetWebHook(context.Background(), webhookUrl)
+		monobankClientConf := monobank.NewConfiguration()
+		monobankClient := monobank.NewAPIClient(monobankClientConf)
+
+		req := monobank.ApiPersonalWebhookPostRequest{}
+		req = req.XToken(os.Getenv("MONOBANK_TOKEN"))
+		req = req.SetWebHook(monobank.SetWebHook{WebHookUrl: &webhookUrl})
+		_, err := monobankClient.DefaultApi.PersonalWebhookPostExecute(req)
 		if err != nil {
 			log.Fatalln("failed to register monobank webhook")
 		}

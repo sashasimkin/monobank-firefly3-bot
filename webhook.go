@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	firefly3 "gitea.stuzer.link/stuzer05/go-firefly3"
+	"gitea.stuzer.link/stuzer05/go-firefly3"
+	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
-	monobank "github.com/vtopc/go-monobank"
 	"math"
 	"net/http"
 	"os"
@@ -47,11 +47,11 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// find accounts
-	account := ConfigGetAccountByMonobankId(config, monobankTransaction.Data.AccountID)
+	account := ConfigGetAccountByMonobankId(config, monobankTransaction.Data.Account)
 
 	// cancel if one of account ids is empty
 	if len(account.Firefly3Name) == 0 || len(account.MonobankId) == 0 {
-		LogString("cannot find firefly3 or monobank ids (" + monobankTransaction.Data.AccountID + ")")
+		LogString("cannot find firefly3 or monobank ids (" + monobankTransaction.Data.Account + ")")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -69,7 +69,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	for _, row := range config.TransactionTypes {
 
 		// is refund
-		if slices.Contains(row.NamesRefund, monobankTransaction.Data.Transaction.Description) {
+		if slices.Contains(row.NamesRefund, *monobankTransaction.Data.StatementItem.Description) {
 			opts := firefly3.TransactionsApiListTransactionOpts{
 				Limit: optional.NewInt32(999),
 				Type_: optional.NewInterface("withdrawal"),
@@ -97,16 +97,16 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 					}
 
 					// read monobank transaction
-					var monobankTransaction monobank.Transaction
+					var monobankTransaction monobank.StatementItemsInner
 					err = json.Unmarshal(notesBytes, &monobankTransaction)
 					if err != nil {
 						continue
 					}
 
 					// find transaction
-					sum := int(math.Abs(math.Round(float64(monobankTransaction.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.CommissionRate/100))))
+					sum := int(math.Abs(math.Round(float64(*monobankTransaction.Amount/100)))) - int(math.Abs(math.Round(float64(*monobankTransaction.CommissionRate/100))))
 					sum2, _ := strconv.ParseFloat(tRow.Amount, 64)
-					if slices.Contains(row.Names, monobankTransaction.Description) && sum == int(sum2) {
+					if slices.Contains(row.Names, *monobankTransaction.Description) && sum == int(sum2) {
 						// delete transaction
 						opts := firefly3.TransactionsApiDeleteTransactionOpts{}
 						firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
@@ -118,15 +118,15 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			break
 		} else {
 			// check name & mcc
-			if !(slices.Contains(row.Names, monobankTransaction.Data.Transaction.Description) || slices.Contains(row.MccCodes, int(monobankTransaction.Data.Transaction.MCC))) {
+			if !(slices.Contains(row.Names, *monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, int(*monobankTransaction.Data.StatementItem.Mcc))) {
 				continue
 			}
 
 			// create firefly3 transaction
 			firefly3Transaction := firefly3.TransactionSplitStore{
-				Date:       time.Unix(monobankTransaction.Data.Transaction.Time.Unix(), 0).Add(time.Hour * 2),
+				Date:       time.Unix(int64(*monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
 				Notes:      string(monobankTransactionJson),
-				Amount:     strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.Transaction.Amount/100)))) - int(math.Abs(math.Round(float64(monobankTransaction.Data.Transaction.CommissionRate/100))))),
+				Amount:     strconv.Itoa(int(math.Abs(math.Round(float64(*monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(*monobankTransaction.Data.StatementItem.CommissionRate/100))))),
 				SourceName: account.Firefly3Name,
 			}
 
@@ -163,13 +163,13 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if monobankTransaction.Data.Transaction.CommissionRate > 0 {
+	if *monobankTransaction.Data.StatementItem.CommissionRate > 0 {
 		firefly3Transactions = append(firefly3Transactions, firefly3.TransactionSplitStore{
 			Type_:       &firefly3TransactionTypeWithdrawal,
-			Date:        time.Unix(monobankTransaction.Data.Transaction.Time.Unix(), 0).Add(time.Hour * 2),
+			Date:        time.Unix(int64(*monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
 			Notes:       string(monobankTransactionJson),
 			Description: "Transfer fee",
-			Amount:      strconv.Itoa(int(math.Abs(math.Round(float64(monobankTransaction.Data.Transaction.CommissionRate / 100))))),
+			Amount:      strconv.Itoa(int(math.Abs(math.Round(float64(*monobankTransaction.Data.StatementItem.CommissionRate / 100))))),
 			SourceName:  account.Firefly3Name,
 		})
 	}
