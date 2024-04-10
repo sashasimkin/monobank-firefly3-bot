@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
+	monobank "github.com/vtopc/go-monobank"
 	"io"
 	"log"
 	"net/http"
@@ -61,23 +62,11 @@ func main() {
 		webhookUrl := `https://` + os.Getenv("MONOBANK_WEBHOOK_DOMAIN") + webhookLocalUrl
 
 		// register monobank webhook
-		req, err := http.NewRequest("POST", "https://api.monobank.ua/personal/webhook", bytes.NewBuffer([]byte(`{"webHookUrl":"`+webhookUrl+`"}`)))
+		monobankClient := monobank.NewPersonalClient(nil).WithAuth(monobank.NewPersonalAuthorizer(os.Getenv("MONOBANK_TOKEN")))
+		err := monobankClient.SetWebHook(context.Background(), webhookUrl)
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalln("failed to register monobank webhook")
 		}
-
-		req.Header.Add("Content-Type", "application/json")
-		req.Header.Add("X-Token", os.Getenv("MONOBANK_TOKEN"))
-
-		res, err := (&http.Client{}).Do(req)
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
-
-		if res.StatusCode != http.StatusOK {
-			log.Fatalf("failed to register monobank webhook")
-		}
-		res.Body.Close()
 
 		// set webhook
 		http.HandleFunc(webhookLocalUrl, handleWebhook)
@@ -87,7 +76,7 @@ func main() {
 		fmt.Println("webhook url " + webhookUrl)
 		err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatalln(err.Error())
 		}
 	}
 }
