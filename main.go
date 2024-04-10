@@ -57,8 +57,8 @@ func main() {
 		//	os.Exit(1)
 		//}
 	} else {
-		webhookLocalUrl := "/webhook/" + os.Getenv("MONOBANK_WEBHOOK_SECRET")
-		webhookUrl := `https://` + os.Getenv("MONOBANK_WEBHOOK_DOMAIN") + webhookLocalUrl
+		webhookLocalUrl := fmt.Sprintf("/webhook/%s", os.Getenv("MONOBANK_WEBHOOK_SECRET"))
+		webhookUrl := fmt.Sprintf("https://%s/webhook/%s", os.Getenv("MONOBANK_WEBHOOK_DOMAIN"), os.Getenv("MONOBANK_WEBHOOK_SECRET"))
 
 		// register monobank webhook
 		monobankClientConf := monobank.NewConfiguration()
