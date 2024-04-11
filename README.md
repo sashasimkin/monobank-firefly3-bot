@@ -28,3 +28,12 @@ configure accounts in `config.json`
 
 configure which transactions to match (by name or mcc codes) in `config.json`
 
+## Run
+
+you only need `.env`, `config.json` and build binary to run the bot
+
+```sh
+./monobank-firefly3-bot
+```
+
+bot will automatically register Monobank webhook url and start listening for incoming transactions
