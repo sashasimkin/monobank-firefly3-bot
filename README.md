@@ -37,3 +37,22 @@ you only need `.env`, `config.json` and build binary to run the bot
 ```
 
 bot will automatically register Monobank webhook url and start listening for incoming transactions
+
+## Usage
+
+to get monobank account ids use `--monobank-list-accounts` command
+```sh
+./monobank-firefly3-bot --monobank-list-accounts
+0xzGO4sgEGXXXXXXqqSTJQ  537541******3946
+wp6M2Ln7nkXXXXXXVYCCpA  444111******7344
+4723djMLsLXXXXXXYjxqRw  444111******3747
+```
+
+to get firefly3 account ids use `--firefly3-list-accounts` command
+```sh
+./monobank-firefly3-bot --firefly3-list-accounts
+1     Mono black
+2     Wallet cash (UAH)
+3     Mono white
+4     PrivatBank virtual
+```

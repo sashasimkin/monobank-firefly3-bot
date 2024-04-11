@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"gitea.stuzer.link/stuzer05/go-firefly3"
 	"gitea.stuzer.link/stuzer05/go-monobank"
+	"github.com/antihax/optional"
 	"github.com/joho/godotenv"
 	"io"
 	"log"
@@ -34,18 +37,59 @@ func main() {
 	}
 
 	// flags
-	flagDoTransaction := flag.String("monobank-transaction", "", "run monobank transaction JSON manually")
+	flagMonobankDoTransaction := flag.String("monobank-transaction", "", "run monobank transaction JSON manually")
+	flagMonobankListAccounts := flag.Bool("monobank-list-accounts", false, "list monobank accounts")
+	flagFirefly3ListAccounts := flag.Bool("firefly3-list-accounts", false, "list firefly3 accounts")
 
 	flag.Parse()
 
+	// init monobank client
+	monobankClientConf := monobank.NewConfiguration()
+	monobankClient := monobank.NewAPIClient(monobankClientConf)
+
+	// init firefly3 client
+	clientConf := firefly3.NewConfiguration()
+	clientConf.BasePath = os.Getenv("FIREFLY3_API_URL")
+	clientConf.AddDefaultHeader("Authorization", "Bearer "+os.Getenv("FIREFLY3_TOKEN"))
+	firefly3Client := firefly3.NewAPIClient(clientConf)
+
 	// manual transaction
-	if len(*flagDoTransaction) > 0 {
+	if *flagMonobankListAccounts {
+		// get monobank accounts
+		req := monobank.ApiPersonalClientInfoGetRequest{}
+		req = req.XToken(os.Getenv("MONOBANK_TOKEN"))
+		res, _, err := monobankClient.DefaultApi.PersonalClientInfoGetExecute(req)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		// list accounts
+		for _, row := range res.Accounts {
+			fmt.Printf("%v\t%v\n", *row.Id, (*row.MaskedPan)[0])
+		}
+	} else if *flagFirefly3ListAccounts {
+		// get firefly3 accounts
+		req := firefly3.AccountsApiListAccountOpts{
+			Limit: optional.NewInt32(9999),
+		}
+		res, _, err := firefly3Client.AccountsApi.ListAccount(context.Background(), &req)
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		// list accounts
+		for _, row := range res.Data {
+			if row.Attributes.Active && (*row.Attributes.Type_ == firefly3.ASSET_ShortAccountTypeProperty) {
+				fmt.Printf("%v\t%v\n", row.Id, row.Attributes.Name)
+			}
+		}
+	} else if len(*flagMonobankDoTransaction) > 0 {
 		w := httptest.NewRecorder()
 
 		r := &http.Request{
 			Method: http.MethodPost,
 			Header: make(http.Header),
-			Body:   io.NopCloser(strings.NewReader(*flagDoTransaction)),
+			Body:   io.NopCloser(strings.NewReader(*flagMonobankDoTransaction)),
 		}
 		r.Header.Set("Content-Type", "application/json")
 
@@ -61,9 +105,6 @@ func main() {
 		webhookUrl := fmt.Sprintf("https://%s/webhook/%s", os.Getenv("MONOBANK_WEBHOOK_DOMAIN"), os.Getenv("MONOBANK_WEBHOOK_SECRET"))
 
 		// register monobank webhook
-		monobankClientConf := monobank.NewConfiguration()
-		monobankClient := monobank.NewAPIClient(monobankClientConf)
-
 		req := monobank.ApiPersonalWebhookPostRequest{}
 		req = req.XToken(os.Getenv("MONOBANK_TOKEN"))
 		req = req.SetWebHook(monobank.SetWebHook{WebHookUrl: &webhookUrl})
