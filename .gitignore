@@ -3,3 +3,5 @@
 /.env
 /config.json
 /monobank-firefly3-bot
+/logs/*
+!/logs/.gitkeep

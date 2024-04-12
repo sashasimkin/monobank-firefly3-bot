@@ -56,3 +56,7 @@ to get firefly3 account ids use `--firefly3-list-accounts` command
 3     Mono white
 4     PrivatBank virtual
 ```
+
+## API docs
+- https://api-docs.firefly-iii.org
+- https://api.monobank.ua/docs/index.html
