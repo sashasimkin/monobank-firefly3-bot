@@ -92,6 +92,12 @@ func main() {
 		// set webhook
 		http.HandleFunc(webhookLocalUrl, handleWebhook)
 
+		// health
+		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"pass"}`))
+		})
+
 		// listen server
 		fmt.Println("webhook server listening on " + os.Getenv("LISTEN"))
 		fmt.Println("webhook url " + webhookUrl)
