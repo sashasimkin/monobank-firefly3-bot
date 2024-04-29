@@ -9,6 +9,7 @@ import (
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
 	"math"
+	"os"
 	"slices"
 	"strconv"
 	"time"
@@ -18,6 +19,8 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 	firefly3TransactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
 	firefly3TransactionTypeDeposit := firefly3.DEPOSIT_TransactionTypeProperty
 	firefly3TransactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
+
+	timezoneHoursDiff, _ := strconv.Atoi(os.Getenv("TIMEZONE_HOURS_DIFF"))
 
 	// get body json string (for logging)
 	monobankTransactionJson, err := json.Marshal(monobankTransaction)
@@ -93,7 +96,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 
 			// create firefly3 transaction
 			firefly3Transaction := firefly3.TransactionSplitStore{
-				Date:       time.Unix(int64(*monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
+				Date:       time.Unix(int64(*monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
 				Notes:      string(monobankTransactionJson),
 				Amount:     strconv.Itoa(int(math.Abs(math.Round(float64(*monobankTransaction.Data.StatementItem.Amount/100)))) - int(math.Abs(math.Round(float64(*monobankTransaction.Data.StatementItem.CommissionRate/100))))),
 				SourceName: account.Firefly3Name,
@@ -135,7 +138,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 	if *monobankTransaction.Data.StatementItem.CommissionRate > 0 {
 		firefly3Transactions = append(firefly3Transactions, firefly3.TransactionSplitStore{
 			Type_:       &firefly3TransactionTypeWithdrawal,
-			Date:        time.Unix(int64(*monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * 2),
+			Date:        time.Unix(int64(*monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
 			Notes:       string(monobankTransactionJson),
 			Description: "Transfer fee",
 			Amount:      strconv.Itoa(int(math.Abs(math.Round(float64(*monobankTransaction.Data.StatementItem.CommissionRate / 100))))),
