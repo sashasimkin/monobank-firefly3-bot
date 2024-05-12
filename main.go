@@ -35,16 +35,14 @@ func main() {
 	// manual transaction
 	if *flagMonobankListAccounts {
 		// get monobank accounts
-		req := monobank.ApiPersonalClientInfoGetRequest{}
-		req = req.XToken(os.Getenv("MONOBANK_TOKEN"))
-		res, _, err := app.App().MonobankClient.DefaultApi.PersonalClientInfoGetExecute(req)
+		res, _, err := app.App().MonobankClient.Api.PersonalClientInfoGet(context.Background(), os.Getenv("MONOBANK_TOKEN"))
 		if err != nil {
 			log.Fatalln(err.Error())
 		}
 
 		// list accounts
 		for _, row := range res.Accounts {
-			fmt.Printf("%v\t%v\n", *row.Id, (*row.MaskedPan)[0])
+			fmt.Printf("%v\t%v\n", row.Id, (*row.MaskedPan)[0])
 		}
 	} else if *flagFirefly3ListAccounts {
 		// get firefly3 accounts
@@ -81,10 +79,7 @@ func main() {
 		webhookUrl := fmt.Sprintf("https://%s/webhook/%s", os.Getenv("MONOBANK_WEBHOOK_DOMAIN"), os.Getenv("MONOBANK_WEBHOOK_SECRET"))
 
 		// register monobank webhook
-		req := monobank.ApiPersonalWebhookPostRequest{}
-		req = req.XToken(os.Getenv("MONOBANK_TOKEN"))
-		req = req.SetWebHook(monobank.SetWebHook{WebHookUrl: &webhookUrl})
-		_, err := app.App().MonobankClient.DefaultApi.PersonalWebhookPostExecute(req)
+		_, err := app.App().MonobankClient.Api.PersonalWebhookPost(context.Background(), monobank.SetWebHook{WebHookUrl: webhookUrl}, os.Getenv("MONOBANK_TOKEN"))
 		if err != nil {
 			log.Fatalln("failed to register monobank webhook")
 		}
