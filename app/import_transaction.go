@@ -69,19 +69,22 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 					}
 
 					// read monobank transaction
-					var monobankTransaction monobank.StatementItemsInner
+					var monobankTransaction monobank.WebHookResponse
 					err = json.Unmarshal(notesBytes, &monobankTransaction)
 					if err != nil {
 						continue
 					}
 
 					// find transaction
-					sum := int(math.Abs(math.Round(monobankTransaction.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.CommissionRate/100)))
+					sum := int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))
 					sum2, _ := strconv.ParseFloat(tRow.Amount, 64)
-					if slices.Contains(row.Names, monobankTransaction.Description) && sum == int(sum2) {
+					if slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) && sum == int(sum2) {
 						// delete transaction
 						opts := firefly3.TransactionsApiDeleteTransactionOpts{}
-						App().Firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
+						_, err := App().Firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
+						if err != nil {
+							return err
+						}
 
 						isDeleted = true
 					}
