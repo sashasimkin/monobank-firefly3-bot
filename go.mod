@@ -9,4 +9,4 @@ require (
 	github.com/joho/godotenv v1.5.1
 )
 
-require golang.org/x/oauth2 v0.20.0 // indirect
+require golang.org/x/oauth2 v0.21.0 // indirect
