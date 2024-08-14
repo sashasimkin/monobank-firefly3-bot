@@ -1,6 +1,6 @@
 module stuzer.link/monobank-firefly3-bot
 
-go 1.22.2
+go 1.23
 
 require (
 	gitea.stuzer.link/stuzer05/go-firefly3/v2 v2.1.0
@@ -9,4 +9,4 @@ require (
 	github.com/joho/godotenv v1.5.1
 )
 
-require golang.org/x/oauth2 v0.21.0 // indirect
+require golang.org/x/oauth2 v0.22.0 // indirect
