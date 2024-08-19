@@ -1,18 +1,19 @@
 {
   "accounts": [
       {
-        "name": "Card 1",
         "firefly3_id": "1",
-        "monobank_id": "xxxxxxxxxxxxxxxxxxxxxx"
+        "monobank_id": "xxxxxxxxxxxxxxxxxxxxxx",
+        "currency": "UAH"
       },
       {
-        "name": "Card 2",
         "firefly3_id": "2",
-        "monobank_id": "xxxxxxxxxxxxxxxxxxxxxx"
+        "monobank_id": "xxxxxxxxxxxxxxxxxxxxxx",
+        "currency": "UAH"
       },
       {
         "name": "Card 3",
-        "firefly3_id": "3"
+        "firefly3_id": "3",
+        "currency": "EUR"
       }
   ],
   "transaction_types": [

@@ -29,10 +29,10 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 	}
 
 	// find accounts
-	account := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
+	destAccount := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
 
-	// cancel if one of account ids is empty
-	if len(account.Firefly3Name) == 0 || len(account.MonobankId) == 0 {
+	// cancel if one of destAccount ids is empty
+	if len(destAccount.Firefly3Name) == 0 || len(destAccount.MonobankId) == 0 {
 		return errors.New("cannot find firefly3 or monobank ids (" + monobankTransaction.Data.Account + ")")
 	}
 
@@ -102,7 +102,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 				Date:       time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
 				Notes:      string(monobankTransactionJson),
 				Amount:     strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))),
-				SourceName: account.Firefly3Name,
+				SourceName: destAccount.Firefly3Name,
 			}
 
 			// check max sum
@@ -132,6 +132,16 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 			// swap source and destination
 			if row.Firefly3.IsUseDestinationAsSource {
 				firefly3Transaction.SourceName, firefly3Transaction.DestinationName = firefly3Transaction.DestinationName, firefly3Transaction.SourceName
+
+				// when transfer between different currencies, convert
+				sourceAccount := App().Config.GetAccountByFirefly3Name(firefly3Transaction.SourceName)
+				if sourceAccount.Currency != destAccount.Currency {
+					// swap amounts
+					firefly3Transaction.ForeignAmount = firefly3Transaction.Amount
+					firefly3Transaction.Amount = strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.OperationAmount / 100))))
+
+					firefly3Transaction.ForeignCurrencyCode = destAccount.Currency
+				}
 			}
 
 			firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
@@ -145,7 +155,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 			Notes:       string(monobankTransactionJson),
 			Description: "Transfer fee",
 			Amount:      strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate / 100)))),
-			SourceName:  account.Firefly3Name,
+			SourceName:  destAccount.Firefly3Name,
 		})
 	}
 

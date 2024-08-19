@@ -8,6 +8,7 @@ type Config struct {
 type ConfigAccount struct {
 	Firefly3Name string `json:"firefly3_name,omitempty"`
 	MonobankId   string `json:"monobank_id,omitempty"`
+	Currency     string `json:"currency,omitempty"`
 }
 
 type ConfigTransactionTypes struct {
