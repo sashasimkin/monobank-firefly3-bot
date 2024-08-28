@@ -135,7 +135,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 
 				// when transfer between different currencies, convert
 				sourceAccount := App().Config.GetAccountByFirefly3Name(firefly3Transaction.SourceName)
-				if sourceAccount.Currency != destAccount.Currency {
+				if len(sourceAccount.Currency) > 0 && sourceAccount.Currency != destAccount.Currency {
 					// swap amounts
 					firefly3Transaction.ForeignAmount = firefly3Transaction.Amount
 					firefly3Transaction.Amount = strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.OperationAmount / 100))))
