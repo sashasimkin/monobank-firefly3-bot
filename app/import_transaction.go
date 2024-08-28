@@ -12,6 +12,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,15 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 	monobankTransactionJson, err := json.Marshal(monobankTransaction)
 	if err != nil {
 		return err
+	}
+
+	// check if transaction hs been logged
+	isTransactionAlreadyLogged, err := LogContainsTransactionID(monobankTransaction.Data.StatementItem.Id)
+	if err != nil {
+		return err
+	}
+	if isTransactionAlreadyLogged {
+		return nil
 	}
 
 	// find accounts
@@ -92,8 +102,21 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 			}
 			break
 		} else {
+			// check name match
+			isDescriptionMatch := false
+			if row.NamesLooseMatch {
+				for _, name := range row.Names {
+					if strings.HasPrefix(monobankTransaction.Data.StatementItem.Description, name) {
+						isDescriptionMatch = true
+						break
+					}
+				}
+			} else {
+				isDescriptionMatch = slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description)
+			}
+
 			// check name & mcc
-			if !(slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) || slices.Contains(row.MccCodes, int(monobankTransaction.Data.StatementItem.Mcc))) {
+			if !(isDescriptionMatch || slices.Contains(row.MccCodes, int(monobankTransaction.Data.StatementItem.Mcc))) {
 				continue
 			}
 

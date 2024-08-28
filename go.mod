@@ -10,5 +10,6 @@ require (
 )
 
 require (
+	github.com/sanity-io/litter v1.5.5 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
 )

@@ -1,25 +1,26 @@
 package config
 
 type Config struct {
-	Accounts         []ConfigAccount          `json:"accounts"`
-	TransactionTypes []ConfigTransactionTypes `json:"transaction_types"`
+	Accounts         []Account          `json:"accounts"`
+	TransactionTypes []TransactionTypes `json:"transaction_types"`
 }
 
-type ConfigAccount struct {
+type Account struct {
 	Firefly3Name string `json:"firefly3_name,omitempty"`
 	MonobankId   string `json:"monobank_id,omitempty"`
 	Currency     string `json:"currency,omitempty"`
 }
 
-type ConfigTransactionTypes struct {
-	Names       []string                      `json:"names,omitempty"`
-	NamesRefund []string                      `json:"names_refund,omitempty"`
-	MccCodes    []int                         `json:"mcc_codes,omitempty"`
-	Firefly3    ConfigTransactionTypeFirefly3 `json:"firefly3,omitempty"`
-	SumMax      int                           `json:"sum_max,omitempty"`
+type TransactionTypes struct {
+	Names           []string                `json:"names,omitempty"`
+	NamesRefund     []string                `json:"names_refund,omitempty"`
+	NamesLooseMatch bool                    `json:"names_loose_match,omitempty"` // "name%" match
+	MccCodes        []int                   `json:"mcc_codes,omitempty"`
+	Firefly3        TransactionTypeFirefly3 `json:"firefly3,omitempty"`
+	SumMax          int                     `json:"sum_max,omitempty"`
 }
 
-type ConfigTransactionTypeFirefly3 struct {
+type TransactionTypeFirefly3 struct {
 	Type                     string `json:"type,omitempty"`
 	Destination              string `json:"destination,omitempty"`
 	Description              string `json:"description,omitempty"`

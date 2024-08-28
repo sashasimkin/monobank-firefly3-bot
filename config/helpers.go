@@ -1,21 +1,21 @@
 package config
 
-func (c *Config) GetAccountByMonobankId(q string) ConfigAccount {
+func (c *Config) GetAccountByMonobankId(q string) Account {
 	for _, row := range c.Accounts {
 		if row.MonobankId == q {
 			return row
 		}
 	}
 
-	return ConfigAccount{}
+	return Account{}
 }
 
-func (c *Config) GetAccountByFirefly3Name(q string) ConfigAccount {
+func (c *Config) GetAccountByFirefly3Name(q string) Account {
 	for _, row := range c.Accounts {
 		if row.Firefly3Name == q {
 			return row
 		}
 	}
 
-	return ConfigAccount{}
+	return Account{}
 }
