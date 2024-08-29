@@ -18,7 +18,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// log body string
-	app.LogString(string(body))
+	defer app.LogString(string(body))
 
 	// check request empty body
 	if len(string(body)) == 0 {
