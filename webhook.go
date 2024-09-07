@@ -36,6 +36,16 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// check if transaction hs been logged
+	isTransactionAlreadyLogged, err := app.LogContainsTransactionID(monobankTransaction.Data.StatementItem.Id)
+	if err != nil {
+		app.LogString(err.Error())
+		return
+	}
+	if isTransactionAlreadyLogged {
+		return
+	}
+
 	err = app.ImportTransaction(monobankTransaction)
 	if err != nil {
 		app.LogString(err.Error())

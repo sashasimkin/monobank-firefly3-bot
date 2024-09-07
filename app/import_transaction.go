@@ -29,15 +29,6 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 		return err
 	}
 
-	// check if transaction hs been logged
-	isTransactionAlreadyLogged, err := LogContainsTransactionID(monobankTransaction.Data.StatementItem.Id)
-	if err != nil {
-		return err
-	}
-	if isTransactionAlreadyLogged {
-		return nil
-	}
-
 	// find accounts
 	destAccount := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
 
