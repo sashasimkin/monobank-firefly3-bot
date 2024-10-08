@@ -60,13 +60,13 @@ func main() {
 		}
 	} else if len(*flagMonobankDoTransaction) > 0 {
 		var monobankTransaction monobank.WebHookResponse
-		err = json.Unmarshal([]byte(*flagMonobankDoTransaction), &monobankTransaction)
+		err := json.Unmarshal([]byte(*flagMonobankDoTransaction), &monobankTransaction)
 		if err != nil {
 			fmt.Println(err.Error())
 			os.Exit(1)
 		}
 
-		err := app.ImportTransaction(monobankTransaction)
+		err = app.ImportTransaction(monobankTransaction)
 		if err != nil {
 			fmt.Println(err.Error())
 			os.Exit(1)
