@@ -12,15 +12,20 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"stuzer.link/monobank-firefly3-bot/app"
 )
 
 func main() {
-	// load .env
-	err := godotenv.Load(".env")
+	// Get executable directory
+	exePath, err := os.Executable()
 	if err != nil {
-		log.Fatalf("error loading .env file")
+		log.Fatal("Error getting executable path:", err)
 	}
+	exeDir := filepath.Dir(exePath)
+
+	// load .env
+	godotenv.Load(filepath.Join(exeDir, ".env"))
 
 	// init app
 	app.Init()
