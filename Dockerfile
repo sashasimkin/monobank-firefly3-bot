@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y ca-certificates
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
+COPY go.mod go.sum .
 
 RUN go mod download && go mod verify
 
