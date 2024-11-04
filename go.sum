@@ -2,6 +2,8 @@ gitea.stuzer.link/stuzer05/go-firefly3/v2 v2.1.0 h1:t+FOFg48PPN2n6SO6PwbqVpHGqYK
 gitea.stuzer.link/stuzer05/go-firefly3/v2 v2.1.0/go.mod h1:FNdERhJjtqfkBQqR2EvB7T3h6eGJVid4xcBCUu1/9FU=
 gitea.stuzer.link/stuzer05/go-monobank v0.2303.0 h1:BDv3h9bk5Fs3iI51W+pXmjPBAQn9T+YZu+B/lmbeBqc=
 gitea.stuzer.link/stuzer05/go-monobank v0.2303.0/go.mod h1:y/jOBU1U+NNR5umvDH+scrOWk0byZGZrMb4PHEehyrk=
+gitea.stuzer.link/stuzer05/go-monobank v0.2303.1 h1:2IdaL70SVyb3aUqlC6TNNi9VOyliYDdiqKSzhCwHmaE=
+gitea.stuzer.link/stuzer05/go-monobank v0.2303.1/go.mod h1:sZvm8Jhtwpup3/X0acYuT0b+v+r4X0SnCBrJxQjlqkw=
 github.com/antihax/optional v1.0.0 h1:xK2lYat7ZLaVVcIuj82J8kIro4V6kDe0AUDFboUCwcg=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/davecgh/go-spew v0.0.0-20161028175848-04cdfd42973b/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

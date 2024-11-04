@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	gitea.stuzer.link/stuzer05/go-firefly3/v2 v2.1.0
-	gitea.stuzer.link/stuzer05/go-monobank v0.2303.0
+	gitea.stuzer.link/stuzer05/go-monobank v0.2303.1
 	github.com/antihax/optional v1.0.0
 	github.com/joho/godotenv v1.5.1
 )

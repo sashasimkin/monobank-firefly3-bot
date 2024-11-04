@@ -10,8 +10,7 @@ RUN go mod download && go mod verify
 COPY . .
 
 # Build
-RUN go mod download \
-    && make
+RUN make
 
 FROM scratch
 
