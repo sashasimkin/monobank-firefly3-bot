@@ -8,7 +8,6 @@ import (
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
-	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
@@ -17,7 +16,7 @@ import (
 
 func main() {
 	// load .env
-	godotenv.Load(".env")
+	//godotenv.Load(".env")
 
 	// init app
 	app.Init()
