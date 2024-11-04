@@ -8,6 +8,7 @@ import (
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +17,7 @@ import (
 
 func main() {
 	// load .env
-	//godotenv.Load(".env")
+	godotenv.Load(".env")
 
 	// init app
 	app.Init()
@@ -77,7 +78,7 @@ func main() {
 		// register monobank webhook
 		_, err := app.App().MonobankClient.Api.PersonalWebhookPost(context.Background(), monobank.SetWebHook{WebHookUrl: webhookUrl}, os.Getenv("MONOBANK_TOKEN"))
 		if err != nil {
-			log.Fatalln("failed to register monobank webhook")
+			log.Fatalln("failed to register monobank webhook: " + err.Error())
 		}
 
 		// set webhook
