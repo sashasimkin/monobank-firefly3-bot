@@ -14,6 +14,7 @@ RUN make
 
 FROM scratch
 
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
 COPY --from=builder /app/monobank-firefly3-bot /app
 
 ENTRYPOINT ["/app"]
