@@ -9,6 +9,10 @@ import (
 )
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
+	// Parse URL query parameters
+	queryParams := r.URL.Query()
+	isRetry := queryParams.Get("retry") == "true"
+
 	// read request body bytes
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -36,14 +40,16 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// check if transaction hs been logged
-	isTransactionAlreadyLogged, err := app.LogContainsTransactionID(monobankTransaction.Data.StatementItem.Id)
-	if err != nil {
-		app.LogString(err.Error())
-		return
-	}
-	if isTransactionAlreadyLogged {
-		return
+	// only check for logged transaction if not a retry
+	if !isRetry {
+		isTransactionAlreadyLogged, err := app.LogContainsTransactionID(monobankTransaction.Data.StatementItem.Id)
+		if err != nil {
+			app.LogString(err.Error())
+			return
+		}
+		if isTransactionAlreadyLogged {
+			return
+		}
 	}
 
 	err = app.ImportTransaction(monobankTransaction)
