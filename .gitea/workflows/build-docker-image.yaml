@@ -1,7 +1,9 @@
 name: build docker image
 
 on:
-    - push
+  push:
+    branches:
+      - master
 
 jobs:
     docker-build:
@@ -31,6 +33,6 @@ jobs:
                 push: true
                 build-args: |
                   APP_URL="${{ vars.APP_URL }}"
-                tags: gitea.stuzer.link/stuzer05/monobank-firefly3-bot:latest
-                cache-from: type=registry,ref=gitea.stuzer.link/stuzer05/monobank-firefly3-bot:latest
+                tags: gitea.stuzer.link/stuzer05-private/flagsmith-fork:latest
+                cache-from: type=registry,ref=gitea.stuzer.link/stuzer05-private/flagsmith-fork:latest
                 cache-to: type=inline
