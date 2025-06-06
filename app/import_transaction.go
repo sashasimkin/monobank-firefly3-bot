@@ -8,7 +8,6 @@ import (
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
-	"log"
 	"math"
 	"os"
 	"slices"
@@ -114,7 +113,6 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 							}
 							_, _, err := App().Firefly3Client.TransactionsApi.UpdateTransaction(context.Background(), body, tRows.Id, &opts)
 							if err != nil {
-								log.Println(err)
 								return err
 							}
 						}
