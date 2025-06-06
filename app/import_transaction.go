@@ -8,6 +8,7 @@ import (
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
+	"log"
 	"math"
 	"os"
 	"slices"
@@ -55,7 +56,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 				return err
 			}
 
-			// find matching transaction to delete
+			// find matching transaction to adjust/delete
 			isDeleted := false
 			for _, tRows := range oldTransactions.Data {
 				if isDeleted {
@@ -70,24 +71,55 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 					}
 
 					// read monobank transaction
-					var monobankTransaction monobank.WebHookResponse
-					err = json.Unmarshal(notesBytes, &monobankTransaction)
+					var monobankTransactionOld monobank.WebHookResponse
+					err = json.Unmarshal(notesBytes, &monobankTransactionOld)
 					if err != nil {
 						continue
 					}
 
+					// Parse amounts
+					sumNew := int64(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int64(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))
+					sumOldFloat, _ := strconv.ParseFloat(tRow.Amount, 64)
+					sumOld := int64(sumOldFloat)
+
 					// find transaction
-					sum := int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))
-					sum2, _ := strconv.ParseFloat(tRow.Amount, 64)
-					if slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description) && sum == int(sum2) {
-						// delete transaction
-						opts := firefly3.TransactionsApiDeleteTransactionOpts{}
-						_, err := App().Firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
-						if err != nil {
-							return err
+					if slices.Contains(row.Names, monobankTransactionOld.Data.StatementItem.Description) {
+						if sumNew == sumOld {
+							// delete transaction
+							opts := firefly3.TransactionsApiDeleteTransactionOpts{}
+							_, err := App().Firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
+							if err != nil {
+								return err
+							}
+						} else {
+							// adjust transaction
+							opts := firefly3.TransactionsApiUpdateTransactionOpts{}
+							body := firefly3.TransactionUpdate{
+								Transactions: []firefly3.TransactionSplitUpdate{
+									{
+										Description:   tRow.Description,
+										CategoryId:    tRow.CategoryId,
+										DestinationId: tRow.DestinationId,
+										SourceId:      tRow.SourceId,
+										CurrencyId:    tRow.CurrencyId,
+										ExternalUrl:   tRow.ExternalUrl,
+										Date:          tRow.Date,
+										DueDate:       tRow.DueDate,
+										Tags:          tRow.Tags,
+										Notes:         tRow.Notes,
+										// Notes:         string(monobankTransactionJson),
+										Amount: strconv.FormatInt(sumOld-sumNew, 10),
+									},
+								},
+							}
+							_, _, err := App().Firefly3Client.TransactionsApi.UpdateTransaction(context.Background(), body, tRows.Id, &opts)
+							if err != nil {
+								log.Println(err)
+								return err
+							}
 						}
 
-						isDeleted = true
+						isDeleted = true // break 2
 					}
 				}
 			}
