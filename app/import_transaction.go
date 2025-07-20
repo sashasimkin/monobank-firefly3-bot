@@ -143,10 +143,9 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 
 			// create firefly3 transaction
 			firefly3Transaction := firefly3.TransactionSplitStore{
-				Date:       time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
-				Notes:      string(monobankTransactionJson),
-				Amount:     strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))),
-				SourceName: destAccount.Firefly3Name,
+				Date:   time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
+				Notes:  string(monobankTransactionJson),
+				Amount: strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))),
 			}
 
 			// check max sum
@@ -154,28 +153,44 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 			if row.SumMax > 0 && sum > row.SumMax {
 				continue
 			}
-			// make transaction
-			switch row.Firefly3.Type {
-			case "withdrawal":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-				break
+
+			transactionType := row.Firefly3.Type
+
+			// choose transaction direction
+			switch transactionType {
 			case "deposit":
 				firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
 				break
 			case "transfer":
 				firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
 				break
-			default:
+			case "withdrawal":
 				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+				break
+			default:
+				transferSourceAccount := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
+				transferDestAccount := App().Config.GetAccountByFirefly3Name(row.Firefly3.Source)
+
+				if len(transferSourceAccount.Firefly3Name) > 0 && len(transferDestAccount.Firefly3Name) > 0 {
+					transactionType = "transfer" // set direction logic
+					firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
+				} else if monobankTransaction.Data.StatementItem.Amount > 0 {
+					transactionType = "deposit" // set direction logic
+					firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
+				} else {
+					transactionType = "withdrawal" // set direction logic
+					firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+				}
 			}
 
-			firefly3Transaction.Description = row.Firefly3.Description
-			firefly3Transaction.DestinationName = row.Firefly3.Destination
-			firefly3Transaction.CategoryName = row.Firefly3.Category
+			// fmt.Println(transactionType)
+			// return errors.New("cancel")
 
-			// swap source and destination
-			if row.Firefly3.IsUseDestinationAsSource {
-				firefly3Transaction.SourceName, firefly3Transaction.DestinationName = firefly3Transaction.DestinationName, firefly3Transaction.SourceName
+			// transaction direction logic
+			switch transactionType {
+			case "deposit", "transfer":
+				firefly3Transaction.SourceName = row.Firefly3.Destination
+				firefly3Transaction.DestinationName = destAccount.Firefly3Name
 
 				// when transfer between different currencies, convert
 				sourceAccount := App().Config.GetAccountByFirefly3Name(firefly3Transaction.SourceName)
@@ -186,7 +201,14 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 
 					firefly3Transaction.ForeignCurrencyCode = destAccount.Currency
 				}
+				break
+			default:
+				firefly3Transaction.SourceName = destAccount.Firefly3Name
+				firefly3Transaction.DestinationName = row.Firefly3.Destination
 			}
+
+			firefly3Transaction.Description = row.Firefly3.Description
+			firefly3Transaction.CategoryName = row.Firefly3.Category
 
 			firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
 			break
