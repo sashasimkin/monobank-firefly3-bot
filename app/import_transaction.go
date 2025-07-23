@@ -183,13 +183,21 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 				}
 			}
 
-			// fmt.Println(transactionType)
-			// return errors.New("cancel")
+			// transaction direction logic
+			switch transactionType {
+			case "deposit":
+				firefly3Transaction.SourceName = row.Firefly3.Destination
+				break
+			case "transfer":
+				firefly3Transaction.SourceName = row.Firefly3.Source
+				break
+			default:
+				firefly3Transaction.SourceName = destAccount.Firefly3Name
+			}
 
 			// transaction direction logic
 			switch transactionType {
 			case "deposit", "transfer":
-				firefly3Transaction.SourceName = row.Firefly3.Destination
 				firefly3Transaction.DestinationName = destAccount.Firefly3Name
 
 				// when transfer between different currencies, convert
@@ -203,7 +211,6 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 				}
 				break
 			default:
-				firefly3Transaction.SourceName = destAccount.Firefly3Name
 				firefly3Transaction.DestinationName = row.Firefly3.Destination
 			}
 
