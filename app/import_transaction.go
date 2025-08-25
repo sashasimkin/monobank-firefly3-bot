@@ -224,7 +224,7 @@ func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
 	if monobankTransaction.Data.StatementItem.CommissionRate > 0 {
 		firefly3Transactions = append(firefly3Transactions, firefly3.TransactionSplitStore{
 			Type_:       &firefly3TransactionTypeWithdrawal,
-			Date:        time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
+			Date:        time.Now().Add(time.Hour * time.Duration(timezoneHoursDiff)),
 			Notes:       string(monobankTransactionJson),
 			Description: "Transfer fee",
 			Amount:      strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate / 100)))),
