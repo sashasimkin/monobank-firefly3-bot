@@ -1,5 +1,14 @@
 # Monobank - Firefly3 bot
 
+This is a public GitHub mirror of the upstream project at
+<https://gitea.stuzer.link/stuzer05/monobank-firefly3-bot>. The upstream project
+is the source of truth for application code.
+
+The GitHub Actions workflow tests changes and publishes multi-architecture
+container images to `ghcr.io/sashasimkin/monobank-firefly3-bot` on pushes to
+`master` and version tags. Images are tagged `latest`, `sha-<commit>`, and with
+the version tag when one is pushed.
+
 This bot is used to automatically log transactions from Monobank (via webhook) to [Firefly3](https://www.firefly-iii.org/).
 
 Bot creates firefly3 transactions which are meant to be further processed by Firefly3 rules

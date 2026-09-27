@@ -17,6 +17,14 @@ RUN make
 
 FROM scratch
 
-COPY --from=builder /app/monobank-firefly3-bot /app
+LABEL org.opencontainers.image.source="https://github.com/sashasimkin/monobank-firefly3-bot"
 
-ENTRYPOINT ["/app"]
+WORKDIR /app
+
+COPY --from=builder /app/monobank-firefly3-bot /app/monobank-firefly3-bot
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder --chown=1000:1000 /app/logs /app/logs
+
+USER 1000:1000
+
+ENTRYPOINT ["/app/monobank-firefly3-bot"]
