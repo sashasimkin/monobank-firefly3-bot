@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -45,6 +46,9 @@ func SyncMonobankTransactions(ctx context.Context) error {
 		return errors.New("invalid Monobank sync lookback configuration")
 	}
 
+	entries := make([]statementEntry, 0)
+	accountItems := make(map[string]int)
+	accountsToAdvance := make([]string, 0, len(App().Config.Accounts))
 	for _, account := range App().Config.Accounts {
 		if account.MonobankId == "" || account.Firefly3Name == "" {
 			return errors.New("all configured accounts need Monobank and Firefly names")
@@ -79,21 +83,28 @@ func SyncMonobankTransactions(ctx context.Context) error {
 			return fmt.Errorf("fetch statement for %s: %w", account.Firefly3Name, err)
 		}
 		sort.Slice(items, func(i, j int) bool { return items[i].Time < items[j].Time })
-		imported := 0
 		for _, item := range items {
-			created, err := importTransaction(monobank.WebHookResponse{Type: "StatementItem", Data: monobank.WebHookResponseData{Account: account.MonobankId, StatementItem: item}}, true)
-			if err != nil {
-				return fmt.Errorf("import statement item for %s: %w", account.Firefly3Name, err)
-			}
-			if created {
-				imported++
-			}
+			entries = append(entries, statementEntry{Account: account, Item: item})
 		}
-		state.LastSync[account.MonobankId] = now
-		if err := writeSyncState(statePath, state); err != nil {
-			return err
+		accountItems[account.MonobankId] = len(items)
+		accountsToAdvance = append(accountsToAdvance, account.MonobankId)
+	}
+
+	importedByAccount, err := importStatementEntries(entries, App().Config)
+	if err != nil {
+		return fmt.Errorf("import Monobank statement batch: %w", err)
+	}
+	for _, account := range App().Config.Accounts {
+		if _, ok := accountItems[account.MonobankId]; !ok {
+			continue
 		}
-		log.Printf("Synced Monobank account %s: statement_items=%d, imported_transactions=%d", account.Firefly3Name, len(items), imported)
+		log.Printf("Synced Monobank account %s: statement_items=%d, imported_transactions=%d", account.Firefly3Name, accountItems[account.MonobankId], importedByAccount[account.MonobankId])
+	}
+	for _, accountID := range accountsToAdvance {
+		state.LastSync[accountID] = now
+	}
+	if err := writeSyncState(statePath, state); err != nil {
+		return err
 	}
 	return nil
 }
@@ -108,35 +119,56 @@ func ImportMonobankHistory(ctx context.Context, from time.Time) error {
 		return errors.New("historical import start date must be in the past")
 	}
 	end := time.Now().Unix()
-	chunkSize := int64(statementMaxRange/time.Second) - 1
-	for _, account := range App().Config.Accounts {
-		if account.MonobankId == "" || account.Firefly3Name == "" {
-			return errors.New("all configured accounts need Monobank and Firefly names")
+	window, err := configuredTransferMatchWindow(App().Config)
+	if err != nil {
+		return err
+	}
+	chunkSize := int64(statementMaxRange/time.Second) - 1 - int64(window/time.Second)
+	importedTotals := make(map[string]int)
+	start := from.Unix()
+	for start < end {
+		chunkEnd := start + chunkSize
+		if chunkEnd > end {
+			chunkEnd = end
 		}
-		start := from.Unix()
-		imported := 0
-		for start < end {
-			chunkEnd := start + chunkSize
-			if chunkEnd > end {
-				chunkEnd = end
+		entries := make([]statementEntry, 0)
+		isFinalChunk := chunkEnd >= end
+		safeBatchEnd := chunkEnd
+		if !isFinalChunk {
+			safeBatchEnd -= int64(window / time.Second)
+		}
+		for _, account := range App().Config.Accounts {
+			if account.MonobankId == "" || account.Firefly3Name == "" {
+				return errors.New("all configured accounts need Monobank and Firefly names")
 			}
-			items, err := fetchStatementItems(ctx, account.MonobankId, start, chunkEnd)
+			queryStart := start
+			if queryStart > from.Unix() {
+				queryStart -= int64(window / time.Second)
+			}
+			items, err := fetchStatementItems(ctx, account.MonobankId, queryStart, chunkEnd)
 			if err != nil {
 				return fmt.Errorf("fetch history for %s: %w", account.Firefly3Name, err)
 			}
-			sort.Slice(items, func(i, j int) bool { return items[i].Time < items[j].Time })
 			for _, item := range items {
-				created, err := importTransaction(monobank.WebHookResponse{Type: "StatementItem", Data: monobank.WebHookResponseData{Account: account.MonobankId, StatementItem: item}}, true)
-				if err != nil {
-					return fmt.Errorf("import history for %s: %w", account.Firefly3Name, err)
-				}
-				if created {
-					imported++
+				if int64(item.Time) <= safeBatchEnd || isFinalChunk {
+					entries = append(entries, statementEntry{Account: account, Item: item})
 				}
 			}
-			start = chunkEnd + 1
 		}
-		log.Printf("Imported Monobank history for %s: new_transactions=%d", account.Firefly3Name, imported)
+		imported, err := importStatementEntries(entries, App().Config)
+		if err != nil {
+			return fmt.Errorf("import Monobank history batch: %w", err)
+		}
+		for accountID, count := range imported {
+			importedTotals[accountID] += count
+		}
+		if chunkEnd >= end {
+			break
+		}
+		start = chunkEnd - int64(window/time.Second) + 1
+	}
+	for _, account := range App().Config.Accounts {
+		log.Printf("Imported Monobank history for %s: new_transactions=%d", account.Firefly3Name, importedTotals[account.MonobankId])
 	}
 	return nil
 }
@@ -175,8 +207,11 @@ func fetchStatementItems(ctx context.Context, accountID string, from, to int64) 
 }
 
 var lastStatementRequest time.Time
+var statementRequestLock sync.Mutex
 
 func waitForMonobankRateLimit() {
+	statementRequestLock.Lock()
+	defer statementRequestLock.Unlock()
 	if !lastStatementRequest.IsZero() {
 		wait := time.Until(lastStatementRequest.Add(monobankMinDelay))
 		if wait > 0 {

@@ -17,6 +17,7 @@
       }
   ],
   "import_unmatched_transactions": false,
+  "transfer_match_window_seconds": 120,
   "transaction_types": [
     {
       "names": ["Hetzner"],
@@ -53,6 +54,13 @@
         "type": "transfer",
         "description": "Transfer between accounts",
         "destination": "Mono White"
+      }
+    },
+    {
+      "mcc_codes": [4829],
+      "firefly3": {
+        "type": "transfer",
+        "category": "Money transfers"
       }
     },
     {
