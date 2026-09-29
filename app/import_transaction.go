@@ -222,7 +222,7 @@ func buildTransaction(item monobank.StatementItemsInner, account config.Account,
 	typeTransfer := firefly3.TRANSFER_TransactionTypeProperty
 
 	amount := formatMinorAmount(mainAmountMinor(item))
-	description := strings.TrimSpace(item.Description)
+	description := item.Description
 	category := uncategorizedCategory
 	transactionType := ""
 	configuredSource := ""
@@ -238,9 +238,7 @@ func buildTransaction(item monobank.StatementItemsInner, account config.Account,
 		configuredSource = rule.Firefly3.Source
 		configuredDestination = rule.Firefly3.Destination
 	}
-	if description == "" {
-		description = "Monobank transaction"
-	}
+	description = normalizeFireflyDescription(description, "Monobank transaction")
 
 	if refund {
 		transactionType = "deposit"
