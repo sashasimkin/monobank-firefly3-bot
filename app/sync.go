@@ -22,6 +22,7 @@ const (
 
 type SyncState struct {
 	LastSync map[string]int64 `json:"last_sync"`
+	StartAt  map[string]int64 `json:"start_at,omitempty"`
 }
 
 // SyncMonobankTransactions imports recent statement rows and saves a per-account
@@ -34,6 +35,9 @@ func SyncMonobankTransactions(ctx context.Context) error {
 	state, err := readSyncState(statePath)
 	if err != nil {
 		return err
+	}
+	if state.StartAt == nil {
+		state.StartAt = map[string]int64{}
 	}
 	now := time.Now().Unix()
 	overlapHours := envInt64("MONOBANK_SYNC_OVERLAP_HOURS", 48)
@@ -50,13 +54,21 @@ func SyncMonobankTransactions(ctx context.Context) error {
 			// First run establishes a cursor only. This avoids importing recent
 			// transactions before the user has reviewed classification rules.
 			state.LastSync[account.MonobankId] = now
+			state.StartAt[account.MonobankId] = now
 			if err := writeSyncState(statePath, state); err != nil {
 				return err
 			}
 			log.Printf("Initialized Monobank sync cursor for %s; existing transactions were left untouched", account.Firefly3Name)
 			continue
 		}
-		from -= overlapHours * int64(time.Hour/time.Second)
+		startAt, hasStartAt := state.StartAt[account.MonobankId]
+		if !hasStartAt {
+			// Older state files only carried LastSync; treat that checkpoint as
+			// the earliest safe start instead of retroactively importing history.
+			startAt = from
+			state.StartAt[account.MonobankId] = startAt
+		}
+		from = syncWindowStart(from, startAt, overlapHours*int64(time.Hour/time.Second))
 		minimumStart := now - int64(statementMaxRange/time.Second)
 		if from < minimumStart {
 			return fmt.Errorf("sync cursor for account %s is older than Monobank's statement window; run historical import before advancing it", account.Firefly3Name)
@@ -175,7 +187,7 @@ func waitForMonobankRateLimit() {
 }
 
 func readSyncState(path string) (SyncState, error) {
-	state := SyncState{LastSync: map[string]int64{}}
+	state := SyncState{LastSync: map[string]int64{}, StartAt: map[string]int64{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return state, nil
@@ -189,7 +201,18 @@ func readSyncState(path string) (SyncState, error) {
 	if state.LastSync == nil {
 		state.LastSync = map[string]int64{}
 	}
+	if state.StartAt == nil {
+		state.StartAt = map[string]int64{}
+	}
 	return state, nil
+}
+
+func syncWindowStart(lastSync, startAt, overlapSeconds int64) int64 {
+	from := lastSync - overlapSeconds
+	if from < startAt {
+		return startAt
+	}
+	return from
 }
 
 func writeSyncState(path string, state SyncState) error {

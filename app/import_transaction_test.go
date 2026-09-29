@@ -80,3 +80,13 @@ func TestSyncStateRoundTrip(t *testing.T) {
 		t.Fatalf("state cursor = %d, want %d", got.LastSync["account-a"], want.LastSync["account-a"])
 	}
 }
+
+func TestSyncWindowOverlapNeverPrecedesInitialCursor(t *testing.T) {
+	const start = int64(10_000)
+	if got := syncWindowStart(start+3600, start, 48*3600); got != start {
+		t.Fatalf("overlap start = %d, want initial cursor %d", got, start)
+	}
+	if got := syncWindowStart(start+72*3600, start, 48*3600); got != start+24*3600 {
+		t.Fatalf("overlap start = %d, want %d", got, start+24*3600)
+	}
+}
