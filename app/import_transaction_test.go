@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -9,6 +10,49 @@ import (
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"stuzer.link/monobank-firefly3-bot/config"
 )
+
+func TestOmitZeroOptionalFireflyDates(t *testing.T) {
+	body := []byte(`{"apply_rules":true,"transactions":[{"date":"2026-09-29T10:00:00Z","amount":"12.34","category_name":"Groceries","external_id":"source-id","interest_date":"0001-01-01T00:00:00Z","book_date":"0001-01-01T00:00:00Z","process_date":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","payment_date":"0001-01-01T00:00:00Z","invoice_date":"0001-01-01T00:00:00Z"}]}`)
+
+	got, changed, err := omitZeroOptionalFireflyDates(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("zero optional dates were not removed")
+	}
+	var payload struct {
+		Transactions []map[string]json.RawMessage `json:"transactions"`
+	}
+	if err := json.Unmarshal(got, &payload); err != nil {
+		t.Fatal(err)
+	}
+	transaction := payload.Transactions[0]
+	for _, field := range optionalFireflyDateFields {
+		if _, ok := transaction[field]; ok {
+			t.Errorf("zero optional date %q was not omitted", field)
+		}
+	}
+	for _, field := range []string{"date", "amount", "category_name", "external_id"} {
+		if _, ok := transaction[field]; !ok {
+			t.Errorf("required transaction field %q was removed", field)
+		}
+	}
+}
+
+func TestKeepNonzeroOptionalFireflyDate(t *testing.T) {
+	body := []byte(`{"transactions":[{"date":"2026-09-29T10:00:00Z","book_date":"2026-09-29T10:00:00Z"}]}`)
+	got, changed, err := omitZeroOptionalFireflyDates(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("nonzero optional date unexpectedly changed the payload")
+	}
+	if string(got) != string(body) {
+		t.Fatalf("payload changed: %s", got)
+	}
+}
 
 func TestFormatMinorAmountKeepsCents(t *testing.T) {
 	for input, want := range map[int64]string{0: "0.00", 468: "4.68", 168443: "1684.43", -512711: "5127.11"} {

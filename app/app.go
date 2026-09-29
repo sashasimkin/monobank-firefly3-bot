@@ -43,6 +43,7 @@ func Init() {
 		clientConf := firefly3.NewConfiguration()
 		clientConf.BasePath = os.Getenv("FIREFLY3_API_URL")
 		clientConf.AddDefaultHeader("Authorization", "Bearer "+os.Getenv("FIREFLY3_TOKEN"))
+		clientConf.HTTPClient = newFireflyTransactionHTTPClient()
 		app.Firefly3Client = firefly3.NewAPIClient(clientConf)
 	})
 }
