@@ -24,6 +24,8 @@ const (
 	refundRevenue         = "Monobank refunds"
 )
 
+var errNoMatchingTransactionRule = errors.New("no transaction rule matched Monobank statement item")
+
 // ImportTransaction imports a single webhook event. Firefly III identifies
 // direction through the transaction type and expects a positive amount
 // magnitude for both withdrawals and deposits.
@@ -52,20 +54,21 @@ func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatc
 	}
 
 	rule, isRefund := matchTransactionRule(item)
-	if rule == nil && !allowUnmatched {
-		return false, nil
-	}
-
 	mainExternalID := externalID
 	if isRefund {
-		// A refund is its own incoming transaction. Never find, change, or delete
-		// the earlier expense. Firefly III expresses incoming money as a deposit
-		// with a positive amount magnitude.
+		// Keep the refund-specific suffix for compatibility with any refund
+		// deposits already imported by an earlier bot revision.
 		mainExternalID += ":refund"
-		alreadyImported, err = transactionExists(mainExternalID, date)
+		refundAlreadyImported, err := transactionExists(mainExternalID, date)
 		if err != nil {
 			return false, err
 		}
+		// A statement poll may have imported this event as Uncategorized before
+		// a matching refund rule was configured. Do not create a second record.
+		alreadyImported = alreadyImported || refundAlreadyImported
+	}
+	if err := requireTransactionRule(rule, allowUnmatched, alreadyImported); err != nil {
+		return false, err
 	}
 
 	created := false
@@ -116,12 +119,30 @@ func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatc
 }
 
 func matchTransactionRule(item monobank.StatementItemsInner) (*config.TransactionTypes, bool) {
-	for i := range App().Config.TransactionTypes {
-		row := &App().Config.TransactionTypes[i]
-		if slices.Contains(row.NamesRefund, item.Description) {
-			return row, true
-		}
+	return matchTransactionRuleFrom(App().Config.TransactionTypes, item)
+}
 
+func requireTransactionRule(rule *config.TransactionTypes, allowUnmatched, alreadyImported bool) error {
+	if rule == nil && !allowUnmatched && !alreadyImported {
+		return errNoMatchingTransactionRule
+	}
+	return nil
+}
+
+func matchTransactionRuleFrom(rules []config.TransactionTypes, item monobank.StatementItemsInner) (*config.TransactionTypes, bool) {
+	// Refund descriptions take precedence over ordinary merchant and MCC rules
+	// so a positive refund cannot be swallowed by a broad grocery category.
+	if item.Amount > 0 {
+		for i := range rules {
+			row := &rules[i]
+			if slices.Contains(row.NamesRefund, item.Description) {
+				return row, true
+			}
+		}
+	}
+
+	for i := range rules {
+		row := &rules[i]
 		descriptionMatch := false
 		if row.NamesLooseMatch {
 			for _, name := range row.Names {

@@ -1,8 +1,7 @@
 # Monobank - Firefly3 bot
 
-This is a public GitHub mirror of the upstream project at
-<https://gitea.stuzer.link/stuzer05/monobank-firefly3-bot>. The upstream project
-is the source of truth for application code.
+This is the GitHub repository used to build and deploy the bot image for this
+installation.
 
 The GitHub Actions workflow tests changes and publishes multi-architecture
 container images to `ghcr.io/sashasimkin/monobank-firefly3-bot` on pushes to
@@ -16,7 +15,7 @@ Bot creates firefly3 transactions which are meant to be further processed by Fir
 ## Installation
 
 ```sh
-git clone https://gitea.stuzer.link/stuzer05/monobank-firefly3-bot.git
+git clone https://github.com/sashasimkin/monobank-firefly3-bot.git
 
 cd monobank-firefly3-bot
 
@@ -64,6 +63,12 @@ Set `import_unmatched_transactions` to `true` to import new rows that do not
 match a configured rule under the `Uncategorized` category. This is useful for
 new transactions while MCC rules are being prepared; historical imports should
 wait until rules are ready.
+
+Refund description rules take precedence over broad MCC rules and only match
+positive Monobank inflows. Each refund is imported as its own Firefly deposit;
+the original expense remains unchanged. If unmatched imports are disabled,
+webhook deliveries that cannot be imported receive a non-200 response so
+Monobank can retry them.
 
 ## Usage
 
