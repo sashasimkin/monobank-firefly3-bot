@@ -1,10 +1,10 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
@@ -13,239 +13,369 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"stuzer.link/monobank-firefly3-bot/config"
 	"time"
 )
 
+const (
+	uncategorizedCategory = "Uncategorized"
+	uncategorizedExpense  = "Uncategorized"
+	uncategorizedIncome   = "Uncategorized income"
+	refundRevenue         = "Monobank refunds"
+)
+
+var errNoMatchingTransactionRule = errors.New("no transaction rule matched Monobank statement item")
+
+// ImportTransaction imports a single webhook event. Firefly III identifies
+// direction through the transaction type and expects a positive amount
+// magnitude for both withdrawals and deposits.
 func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
-	firefly3TransactionTypeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
-	firefly3TransactionTypeDeposit := firefly3.DEPOSIT_TransactionTypeProperty
-	firefly3TransactionTypeTransfer := firefly3.TRANSFER_TransactionTypeProperty
+	_, err := importTransaction(monobankTransaction, App().Config.ImportUnmatchedTransactions)
+	return err
+}
 
-	timezoneHoursDiff, _ := strconv.Atoi(os.Getenv("TIMEZONE_HOURS_DIFF"))
+func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatched bool) (bool, error) {
+	item := monobankTransaction.Data.StatementItem
+	if item.Hold || (item.Amount == 0 && item.CommissionRate == 0) || item.Id == "" {
+		return false, nil
+	}
 
-	// get body json string (for logging)
-	monobankTransactionJson, err := json.Marshal(monobankTransaction)
+	accountID := monobankTransaction.Data.Account
+	destAccount := App().Config.GetAccountByMonobankId(accountID)
+	if destAccount.Firefly3Name == "" || destAccount.MonobankId == "" {
+		return false, errors.New("cannot find Firefly or Monobank account mapping")
+	}
+
+	date := time.Unix(int64(item.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff()))
+	externalID := monobankExternalID(accountID, item.Id)
+	alreadyImported, err := transactionExists(externalID, date)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// find accounts
-	destAccount := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
-
-	// cancel if one of destAccount ids is empty
-	if len(destAccount.Firefly3Name) == 0 || len(destAccount.MonobankId) == 0 {
-		return errors.New("cannot find firefly3 or monobank ids (" + monobankTransaction.Data.Account + ")")
+	rule, isRefund := matchTransactionRule(item)
+	mainExternalID := externalID
+	if isRefund {
+		// Keep the refund-specific suffix for compatibility with any refund
+		// deposits already imported by an earlier bot revision.
+		mainExternalID += ":refund"
+		refundAlreadyImported, err := transactionExists(mainExternalID, date)
+		if err != nil {
+			return false, err
+		}
+		// A statement poll may have imported this event as Uncategorized before
+		// a matching refund rule was configured. Do not create a second record.
+		alreadyImported = alreadyImported || refundAlreadyImported
+	}
+	if err := requireTransactionRule(rule, allowUnmatched, alreadyImported); err != nil {
+		return false, err
 	}
 
-	// create firefly3 transactions list
-	var firefly3Transactions []firefly3.TransactionSplitStore
-
-	// match transaction with config
-	for _, row := range App().Config.TransactionTypes {
-
-		// is refund
-		if slices.Contains(row.NamesRefund, monobankTransaction.Data.StatementItem.Description) {
-			opts := firefly3.TransactionsApiListTransactionOpts{
-				Limit: optional.NewInt32(999),
-				Type_: optional.NewInterface("withdrawal"),
-				Start: optional.NewString(time.Now().AddDate(0, 0, -7).Format("2006-01-02")), // one week before
-			}
-			oldTransactions, _, err := App().Firefly3Client.TransactionsApi.ListTransaction(context.Background(), &opts)
-			if err != nil {
-				return err
-			}
-
-			// find matching transaction to adjust/delete
-			isDeleted := false
-			for _, tRows := range oldTransactions.Data {
-				if isDeleted {
-					break
+	created := false
+	if !alreadyImported && mainAmountMinor(item) > 0 {
+		transaction := buildTransaction(item, destAccount, rule, isRefund, mainExternalID, date)
+		if err := storeTransaction(transaction); err != nil {
+			// A webhook and a scheduled poll can race. Treat a duplicate hash as
+			// successful only after verifying the source ID exists in Firefly.
+			invalidateTransactionDate(date)
+			found, lookupErr := transactionExists(mainExternalID, date)
+			if lookupErr != nil || !found {
+				if lookupErr != nil {
+					return false, errors.Join(err, lookupErr)
 				}
-
-				for _, tRow := range tRows.Attributes.Transactions {
-					// validate notes is json
-					notesBytes := bytes.NewBufferString(tRow.Notes).Bytes()
-					if !json.Valid(notesBytes) {
-						continue
-					}
-
-					// read monobank transaction
-					var monobankTransactionOld monobank.WebHookResponse
-					err = json.Unmarshal(notesBytes, &monobankTransactionOld)
-					if err != nil {
-						continue
-					}
-
-					// Parse amounts
-					sumNew := int64(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int64(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))
-					sumOldFloat, _ := strconv.ParseFloat(tRow.Amount, 64)
-					sumOld := int64(sumOldFloat)
-
-					// find transaction
-					if slices.Contains(row.Names, monobankTransactionOld.Data.StatementItem.Description) {
-						if sumNew == sumOld {
-							// delete transaction
-							opts := firefly3.TransactionsApiDeleteTransactionOpts{}
-							_, err := App().Firefly3Client.TransactionsApi.DeleteTransaction(context.Background(), tRows.Id, &opts)
-							if err != nil {
-								return err
-							}
-						} else {
-							// adjust transaction
-							opts := firefly3.TransactionsApiUpdateTransactionOpts{}
-							body := firefly3.TransactionUpdate{
-								Transactions: []firefly3.TransactionSplitUpdate{
-									{
-										Description:   tRow.Description,
-										CategoryId:    tRow.CategoryId,
-										DestinationId: tRow.DestinationId,
-										SourceId:      tRow.SourceId,
-										CurrencyId:    tRow.CurrencyId,
-										ExternalUrl:   tRow.ExternalUrl,
-										Date:          tRow.Date,
-										DueDate:       tRow.DueDate,
-										Tags:          tRow.Tags,
-										Notes:         tRow.Notes,
-										// Notes:         string(monobankTransactionJson),
-										Amount: strconv.FormatInt(sumOld-sumNew, 10),
-									},
-								},
-							}
-							_, _, err := App().Firefly3Client.TransactionsApi.UpdateTransaction(context.Background(), body, tRows.Id, &opts)
-							if err != nil {
-								return err
-							}
-						}
-
-						isDeleted = true // break 2
-					}
-				}
+				return false, err
 			}
-			break
 		} else {
-			// check name match
-			isDescriptionMatch := false
-			if row.NamesLooseMatch {
-				for _, name := range row.Names {
-					if strings.HasPrefix(monobankTransaction.Data.StatementItem.Description, name) {
-						isDescriptionMatch = true
-						break
+			created = true
+			recordImportedID(mainExternalID, date)
+		}
+	}
+
+	if item.CommissionRate > 0 {
+		feeID := externalID + ":commission"
+		feeExists, err := transactionExists(feeID, date)
+		if err != nil {
+			return created, err
+		}
+		if !feeExists {
+			fee := buildCommissionTransaction(item, destAccount, feeID, date)
+			if err := storeTransaction(fee); err != nil {
+				invalidateTransactionDate(date)
+				found, lookupErr := transactionExists(feeID, date)
+				if lookupErr != nil || !found {
+					if lookupErr != nil {
+						return created, errors.Join(err, lookupErr)
 					}
+					return created, err
 				}
 			} else {
-				isDescriptionMatch = slices.Contains(row.Names, monobankTransaction.Data.StatementItem.Description)
+				created = true
+				recordImportedID(feeID, date)
 			}
+		}
+	}
 
-			// check name & mcc
-			if !(isDescriptionMatch || slices.Contains(row.MccCodes, int(monobankTransaction.Data.StatementItem.Mcc))) {
-				continue
+	return created, nil
+}
+
+func matchTransactionRule(item monobank.StatementItemsInner) (*config.TransactionTypes, bool) {
+	return matchTransactionRuleFrom(App().Config.TransactionTypes, item)
+}
+
+func requireTransactionRule(rule *config.TransactionTypes, allowUnmatched, alreadyImported bool) error {
+	if rule == nil && !allowUnmatched && !alreadyImported {
+		return errNoMatchingTransactionRule
+	}
+	return nil
+}
+
+func matchTransactionRuleFrom(rules []config.TransactionTypes, item monobank.StatementItemsInner) (*config.TransactionTypes, bool) {
+	// Refund descriptions take precedence over ordinary merchant and MCC rules
+	// so a positive refund cannot be swallowed by a broad grocery category.
+	if item.Amount > 0 {
+		for i := range rules {
+			row := &rules[i]
+			if slices.Contains(row.NamesRefund, item.Description) {
+				return row, true
 			}
+		}
+	}
 
-			// create firefly3 transaction
-			firefly3Transaction := firefly3.TransactionSplitStore{
-				Date:   time.Unix(int64(monobankTransaction.Data.StatementItem.Time), 0).Add(time.Hour * time.Duration(timezoneHoursDiff)),
-				Notes:  string(monobankTransactionJson),
-				Amount: strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.Amount/100))) - int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate/100)))),
-			}
-
-			// check max sum
-			sum, _ := strconv.Atoi(firefly3Transaction.Amount)
-			if row.SumMax > 0 && sum > row.SumMax {
-				continue
-			}
-
-			transactionType := row.Firefly3.Type
-
-			// choose transaction direction
-			switch transactionType {
-			case "deposit":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
-				break
-			case "transfer":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-				break
-			case "withdrawal":
-				firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
-				break
-			default:
-				transferSourceAccount := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
-				transferDestAccount := App().Config.GetAccountByFirefly3Name(row.Firefly3.Source)
-
-				if len(transferSourceAccount.Firefly3Name) > 0 && len(transferDestAccount.Firefly3Name) > 0 {
-					transactionType = "transfer" // set direction logic
-					firefly3Transaction.Type_ = &firefly3TransactionTypeTransfer
-				} else if monobankTransaction.Data.StatementItem.Amount > 0 {
-					transactionType = "deposit" // set direction logic
-					firefly3Transaction.Type_ = &firefly3TransactionTypeDeposit
-				} else {
-					transactionType = "withdrawal" // set direction logic
-					firefly3Transaction.Type_ = &firefly3TransactionTypeWithdrawal
+	for i := range rules {
+		row := &rules[i]
+		descriptionMatch := false
+		if row.NamesLooseMatch {
+			for _, name := range row.Names {
+				if strings.HasPrefix(item.Description, name) {
+					descriptionMatch = true
+					break
 				}
 			}
+		} else {
+			descriptionMatch = slices.Contains(row.Names, item.Description)
+		}
+		if descriptionMatch || slices.Contains(row.MccCodes, int(item.Mcc)) {
+			return row, false
+		}
+	}
+	return nil, false
+}
 
-			// transaction direction logic
-			switch transactionType {
-			case "deposit":
-				firefly3Transaction.SourceName = row.Firefly3.Destination
-				break
-			case "transfer":
-				firefly3Transaction.SourceName = row.Firefly3.Source
-				break
-			default:
-				firefly3Transaction.SourceName = destAccount.Firefly3Name
-			}
+func buildTransaction(item monobank.StatementItemsInner, account config.Account, rule *config.TransactionTypes, refund bool, externalID string, date time.Time) firefly3.TransactionSplitStore {
+	typeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
+	typeDeposit := firefly3.DEPOSIT_TransactionTypeProperty
+	typeTransfer := firefly3.TRANSFER_TransactionTypeProperty
 
-			// transaction direction logic
-			switch transactionType {
-			case "deposit", "transfer":
-				firefly3Transaction.DestinationName = destAccount.Firefly3Name
+	amount := formatMinorAmount(mainAmountMinor(item))
+	description := item.Description
+	category := uncategorizedCategory
+	transactionType := ""
+	configuredSource := ""
+	configuredDestination := ""
+	if rule != nil {
+		if rule.Firefly3.Description != "" {
+			description = rule.Firefly3.Description
+		}
+		if rule.Firefly3.Category != "" {
+			category = rule.Firefly3.Category
+		}
+		transactionType = rule.Firefly3.Type
+		configuredSource = rule.Firefly3.Source
+		configuredDestination = rule.Firefly3.Destination
+	}
+	if description == "" {
+		description = "Monobank transaction"
+	}
 
-				// when transfer between different currencies, convert
-				sourceAccount := App().Config.GetAccountByFirefly3Name(firefly3Transaction.SourceName)
-				if len(sourceAccount.Currency) > 0 && sourceAccount.Currency != destAccount.Currency {
-					// swap amounts
-					firefly3Transaction.ForeignAmount = firefly3Transaction.Amount
-					firefly3Transaction.Amount = strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.OperationAmount / 100))))
+	if refund {
+		transactionType = "deposit"
+		if configuredSource == "" {
+			configuredSource = refundRevenue
+		}
+	} else if transactionType == "" {
+		if item.Amount > 0 {
+			transactionType = "deposit"
+		} else {
+			transactionType = "withdrawal"
+		}
+	}
 
-					firefly3Transaction.ForeignCurrencyCode = destAccount.Currency
+	result := firefly3.TransactionSplitStore{
+		Date:         date,
+		Amount:       amount,
+		Description:  description,
+		CategoryName: category,
+		ExternalId:   externalID,
+		Notes:        "Imported from Monobank statement",
+	}
+
+	switch transactionType {
+	case "deposit":
+		result.Type_ = &typeDeposit
+		result.SourceName = configuredSource
+		if result.SourceName == "" {
+			result.SourceName = uncategorizedIncome
+		}
+		result.DestinationName = account.Firefly3Name
+	case "transfer":
+		result.Type_ = &typeTransfer
+		result.SourceName = configuredSource
+		result.DestinationName = account.Firefly3Name
+		if item.Amount < 0 && result.SourceName == "" {
+			result.Type_ = &typeWithdrawal
+			result.DestinationName = configuredDestination
+		} else if item.Amount > 0 && configuredDestination != "" {
+			result.SourceName = configuredDestination
+		}
+	case "withdrawal":
+		result.Type_ = &typeWithdrawal
+		result.SourceName = account.Firefly3Name
+		result.DestinationName = configuredDestination
+		if result.DestinationName == "" {
+			result.DestinationName = uncategorizedExpense
+		}
+	default:
+		if item.Amount > 0 {
+			result.Type_ = &typeDeposit
+			result.SourceName = uncategorizedIncome
+			result.DestinationName = account.Firefly3Name
+		} else {
+			result.Type_ = &typeWithdrawal
+			result.SourceName = account.Firefly3Name
+			result.DestinationName = uncategorizedExpense
+		}
+	}
+
+	if item.OperationAmount != 0 && item.CurrencyCode != 0 && int(item.CurrencyCode) != currencyCodeFor(account.Currency) {
+		result.ForeignAmount = formatMinorAmount(int64(math.Round(math.Abs(item.OperationAmount))))
+		result.ForeignCurrencyCode = currencyCodeName(int(item.CurrencyCode))
+	}
+	return result
+}
+
+func buildCommissionTransaction(item monobank.StatementItemsInner, account config.Account, externalID string, date time.Time) firefly3.TransactionSplitStore {
+	typeWithdrawal := firefly3.WITHDRAWAL_TransactionTypeProperty
+	return firefly3.TransactionSplitStore{
+		Type_:           &typeWithdrawal,
+		Date:            date,
+		Notes:           "Monobank transaction commission",
+		Description:     "Transfer fee",
+		Amount:          formatMinorAmount(int64(math.Round(math.Abs(item.CommissionRate)))),
+		SourceName:      account.Firefly3Name,
+		DestinationName: "Transfer fees",
+		CategoryName:    uncategorizedCategory,
+		ExternalId:      externalID,
+	}
+}
+
+func mainAmountMinor(item monobank.StatementItemsInner) int64 {
+	amount := int64(math.Round(math.Abs(item.Amount))) - int64(math.Round(math.Abs(item.CommissionRate)))
+	if amount < 0 {
+		return 0
+	}
+	return amount
+}
+
+func storeTransaction(transaction firefly3.TransactionSplitStore) error {
+	opts := firefly3.TransactionsApiStoreTransactionOpts{}
+	_, _, err := App().Firefly3Client.TransactionsApi.StoreTransaction(context.Background(), firefly3.TransactionStore{
+		ApplyRules:           true,
+		ErrorIfDuplicateHash: true,
+		Transactions:         []firefly3.TransactionSplitStore{transaction},
+	}, &opts)
+	return err
+}
+
+func transactionExists(externalID string, date time.Time) (bool, error) {
+	day := date.Format("2006-01-02")
+	if _, loaded := App().loadedTransactionDates.Load(day); loaded {
+		_, exists := App().processedTransactions.Load(externalID)
+		return exists, nil
+	}
+
+	start := date.AddDate(0, 0, -1).Format("2006-01-02")
+	end := date.AddDate(0, 0, 2).Format("2006-01-02")
+	for page := int32(1); ; page++ {
+		query := firefly3.TransactionsApiListTransactionOpts{
+			Limit: optional.NewInt32(999),
+			Page:  optional.NewInt32(page),
+			Start: optional.NewString(start),
+			End:   optional.NewString(end),
+		}
+		transactions, _, err := App().Firefly3Client.TransactionsApi.ListTransaction(context.Background(), &query)
+		if err != nil {
+			return false, err
+		}
+		for _, row := range transactions.Data {
+			for _, split := range row.Attributes.Transactions {
+				if split.ExternalId != "" {
+					App().processedTransactions.Store(split.ExternalId, struct{}{})
 				}
-				break
-			default:
-				firefly3Transaction.DestinationName = row.Firefly3.Destination
+				if split.Notes != "" {
+					var old monobank.WebHookResponse
+					if json.Unmarshal([]byte(split.Notes), &old) == nil && old.Data.StatementItem.Id != "" {
+						App().processedTransactions.Store(monobankExternalID(old.Data.Account, old.Data.StatementItem.Id), struct{}{})
+					}
+				}
 			}
-
-			firefly3Transaction.Description = row.Firefly3.Description
-			firefly3Transaction.CategoryName = row.Firefly3.Category
-
-			firefly3Transactions = append(firefly3Transactions, firefly3Transaction)
+		}
+		if transactions.Meta == nil || transactions.Meta.Pagination == nil || page >= transactions.Meta.Pagination.TotalPages {
 			break
 		}
 	}
-	if monobankTransaction.Data.StatementItem.CommissionRate > 0 {
-		firefly3Transactions = append(firefly3Transactions, firefly3.TransactionSplitStore{
-			Type_:       &firefly3TransactionTypeWithdrawal,
-			Date:        time.Now().Add(time.Hour * time.Duration(timezoneHoursDiff)),
-			Notes:       string(monobankTransactionJson),
-			Description: "Transfer fee",
-			Amount:      strconv.Itoa(int(math.Abs(math.Round(monobankTransaction.Data.StatementItem.CommissionRate / 100)))),
-			SourceName:  destAccount.Firefly3Name,
-		})
+	App().loadedTransactionDates.Store(day, struct{}{})
+	_, ok := App().processedTransactions.Load(externalID)
+	return ok, nil
+}
+
+func recordImportedID(externalID string, date time.Time) {
+	day := date.Format("2006-01-02")
+	App().processedTransactions.Store(externalID, struct{}{})
+	App().loadedTransactionDates.Store(day, struct{}{})
+}
+
+func invalidateTransactionDate(date time.Time) {
+	App().loadedTransactionDates.Delete(date.Format("2006-01-02"))
+}
+
+func monobankExternalID(accountID, transactionID string) string {
+	return "monobank:" + accountID + ":" + transactionID
+}
+
+func formatMinorAmount(amount int64) string {
+	if amount < 0 {
+		amount = -amount
 	}
+	return fmt.Sprintf("%d.%02d", amount/100, amount%100)
+}
 
-	// log firefly3 transactions
-	if len(firefly3Transactions) > 0 {
-		transactionOpts := firefly3.TransactionsApiStoreTransactionOpts{}
+func timezoneHoursDiff() int {
+	diff, _ := strconv.Atoi(os.Getenv("TIMEZONE_HOURS_DIFF"))
+	return diff
+}
 
-		for _, transaction := range firefly3Transactions {
-			_, _, err = App().Firefly3Client.TransactionsApi.StoreTransaction(context.Background(), firefly3.TransactionStore{
-				ApplyRules:   true,
-				Transactions: []firefly3.TransactionSplitStore{transaction},
-			}, &transactionOpts)
-			if err != nil {
-				return err
-			}
-		}
+func currencyCodeFor(code string) int {
+	switch strings.ToUpper(code) {
+	case "USD":
+		return 840
+	case "EUR":
+		return 978
+	case "UAH":
+		return 980
+	default:
+		return 0
 	}
+}
 
-	return nil
+func currencyCodeName(code int) string {
+	switch code {
+	case 840:
+		return "USD"
+	case 978:
+		return "EUR"
+	case 980:
+		return "UAH"
+	default:
+		return ""
+	}
 }

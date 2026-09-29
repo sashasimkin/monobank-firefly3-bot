@@ -1,8 +1,9 @@
 package config
 
 type Config struct {
-	Accounts         []Account          `json:"accounts"`
-	TransactionTypes []TransactionTypes `json:"transaction_types"`
+	Accounts                    []Account          `json:"accounts"`
+	TransactionTypes            []TransactionTypes `json:"transaction_types"`
+	ImportUnmatchedTransactions bool               `json:"import_unmatched_transactions,omitempty"`
 }
 
 type Account struct {

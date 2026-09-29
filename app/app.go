@@ -10,10 +10,12 @@ import (
 )
 
 type Config struct {
-	init           sync.Once
-	Config         config.Config
-	MonobankClient *monobank.APIClient
-	Firefly3Client *firefly3.APIClient
+	init                   sync.Once
+	processedTransactions  sync.Map
+	loadedTransactionDates sync.Map
+	Config                 config.Config
+	MonobankClient         *monobank.APIClient
+	Firefly3Client         *firefly3.APIClient
 }
 
 var app Config
