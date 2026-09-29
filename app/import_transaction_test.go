@@ -96,6 +96,32 @@ func TestUnmatchedStatementBecomesUncategorizedInflowOrOutflow(t *testing.T) {
 	}
 }
 
+func TestHeldStatementItemIsImportableAsDebit(t *testing.T) {
+	item := monobank.StatementItemsInner{Id: "held-id", Amount: -12345, Hold: true, Description: "Merchant"}
+	if !isImportableStatementItem(item) {
+		t.Fatal("held debit was excluded from import")
+	}
+	account := config.Account{Firefly3Name: "Monobank Black UAH", Currency: "UAH"}
+	got := buildTransaction(item, account, nil, false, "external-id", time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC))
+	if got.Type_ == nil || *got.Type_ != firefly3.WITHDRAWAL_TransactionTypeProperty {
+		t.Fatalf("held debit type = %v, want withdrawal", got.Type_)
+	}
+	if got.Amount != "123.45" || got.SourceName != account.Firefly3Name {
+		t.Fatalf("held debit = amount %q, source %q; want 123.45 from Monobank asset", got.Amount, got.SourceName)
+	}
+}
+
+func TestStatementItemWithoutAmountOrIDIsNotImportable(t *testing.T) {
+	for _, item := range []monobank.StatementItemsInner{
+		{Id: "zero", Amount: 0, CommissionRate: 0},
+		{Amount: -100, CommissionRate: 0},
+	} {
+		if isImportableStatementItem(item) {
+			t.Fatalf("invalid statement item unexpectedly importable: %+v", item)
+		}
+	}
+}
+
 func TestRefundBuildsSeparateDeposit(t *testing.T) {
 	account := config.Account{Firefly3Name: "Monobank Black UAH", Currency: "UAH"}
 	date := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
@@ -132,6 +158,23 @@ func TestRefundRulePrecedesBroadMCCRule(t *testing.T) {
 	got, isRefund := matchTransactionRuleFrom([]config.TransactionTypes{groceryRule, refundRule}, item)
 	if got == nil || !isRefund || got.Firefly3.Category != "Refunds" {
 		t.Fatalf("matching rule = %+v, refund = %t; want refund rule ahead of broad MCC rule", got, isRefund)
+	}
+}
+
+func TestPositiveEntryMatchingExpenseRuleBecomesSeparateReversalDeposit(t *testing.T) {
+	account := config.Account{Firefly3Name: "Monobank Black UAH", Currency: "UAH"}
+	rule := config.TransactionTypes{MccCodes: []int{5411}, Firefly3: config.TransactionTypeFirefly3{Type: "withdrawal", Category: "Groceries"}}
+	item := monobank.StatementItemsInner{Id: "refund-id", Amount: 12345, Mcc: 5411, Description: "Grocery merchant"}
+	matched, isRefund := matchTransactionRuleFrom([]config.TransactionTypes{rule}, item)
+	if matched == nil || !isRefund {
+		t.Fatal("positive entry matching an expense rule was not identified as a reversal")
+	}
+	got := buildTransaction(item, account, matched, isRefund, "refund-external-id", time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC))
+	if got.Type_ == nil || *got.Type_ != firefly3.DEPOSIT_TransactionTypeProperty {
+		t.Fatalf("reversal type = %v, want deposit", got.Type_)
+	}
+	if got.Amount != "123.45" || got.SourceName != refundRevenue || got.DestinationName != account.Firefly3Name || got.CategoryName != "Groceries" {
+		t.Fatalf("unexpected reversal: amount=%q source=%q destination=%q category=%q", got.Amount, got.SourceName, got.DestinationName, got.CategoryName)
 	}
 }
 
@@ -195,6 +238,16 @@ func TestMCC4829MatchesOnlyUniqueCrossAccountSameCurrencyAmounts(t *testing.T) {
 	pairs = matchStatementTransfers([]statementEntry{out, in, otherIncoming}, []config.TransactionTypes{rule}, 120*time.Second)
 	if len(pairs) != 0 {
 		t.Fatalf("ambiguous candidates matched as pairs: %+v", pairs)
+	}
+}
+
+func TestMCC4829CanMatchHeldStatementRows(t *testing.T) {
+	rule := config.TransactionTypes{MccCodes: []int{4829}, Firefly3: config.TransactionTypeFirefly3{Type: "transfer"}}
+	out := statementEntry{Account: config.Account{MonobankId: "jar", Firefly3Name: "Jar", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "held-out", Time: 1000, Amount: -10000, Mcc: 4829, Hold: true}}
+	in := statementEntry{Account: config.Account{MonobankId: "card", Firefly3Name: "Card", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "held-in", Time: 1050, Amount: 10000, Mcc: 4829, Hold: true}}
+	pairs := matchStatementTransfers([]statementEntry{out, in}, []config.TransactionTypes{rule}, 120*time.Second)
+	if len(pairs) != 1 || pairs[0].Outgoing.Item.Id != "held-out" || pairs[0].Incoming.Item.Id != "held-in" {
+		t.Fatalf("held rows matched = %+v, want their unique transfer pair", pairs)
 	}
 }
 

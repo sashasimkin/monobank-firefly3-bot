@@ -84,7 +84,7 @@ func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatc
 
 func importTransactionWithTransferFallback(monobankTransaction monobank.WebHookResponse, allowUnmatched, transferFallback bool) (bool, error) {
 	item := monobankTransaction.Data.StatementItem
-	if item.Hold || (item.Amount == 0 && item.CommissionRate == 0) || item.Id == "" {
+	if !isImportableStatementItem(item) {
 		return false, nil
 	}
 
@@ -173,6 +173,13 @@ func importTransactionWithTransferFallback(monobankTransaction monobank.WebHookR
 	return created, nil
 }
 
+func isImportableStatementItem(item monobank.StatementItemsInner) bool {
+	// Do not filter Monobank holds; their signed amounts use the same direction
+	// handling as posted rows. Firefly stores positive magnitudes and uses the
+	// transaction type to express direction.
+	return item.Id != "" && (item.Amount != 0 || item.CommissionRate != 0)
+}
+
 func matchTransactionRule(item monobank.StatementItemsInner) (*config.TransactionTypes, bool) {
 	return matchTransactionRuleFrom(App().Config.TransactionTypes, item)
 }
@@ -210,7 +217,10 @@ func matchTransactionRuleFrom(rules []config.TransactionTypes, item monobank.Sta
 			descriptionMatch = slices.Contains(row.Names, item.Description)
 		}
 		if descriptionMatch || slices.Contains(row.MccCodes, int(item.Mcc)) {
-			return row, false
+			// A positive statement item matched to an expense rule is the
+			// incoming side of a reversal. Keep it separate from the original
+			// withdrawal instead of applying the expense rule's type to it.
+			return row, item.Amount > 0 && row.Firefly3.Type == "withdrawal"
 		}
 	}
 	return nil, false
@@ -241,6 +251,9 @@ func buildTransaction(item monobank.StatementItemsInner, account config.Account,
 	description = normalizeFireflyDescription(description, "Monobank transaction")
 
 	if refund {
+		// Firefly III represents a reversal as a positive deposit. Its type
+		// carries the opposite balance direction; the original withdrawal stays
+		// unchanged.
 		transactionType = "deposit"
 		if configuredSource == "" {
 			configuredSource = refundRevenue
