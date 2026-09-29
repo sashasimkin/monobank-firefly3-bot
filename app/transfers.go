@@ -108,7 +108,7 @@ func matchStatementTransfers(entries []statementEntry, rules []config.Transactio
 	}
 	var outgoing, incoming []statementEntry
 	for _, entry := range entries {
-		if entry.Item.Hold || int(entry.Item.Mcc) != 4829 || mainAmountMinor(entry.Item) <= 0 {
+		if int(entry.Item.Mcc) != 4829 || mainAmountMinor(entry.Item) <= 0 {
 			continue
 		}
 		rule, refund := matchTransactionRuleFrom(rules, entry.Item)

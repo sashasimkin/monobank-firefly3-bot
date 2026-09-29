@@ -93,8 +93,17 @@ new transactions while MCC rules are being prepared; historical imports should
 wait until rules are ready.
 
 Refund description rules take precedence over broad MCC rules and only match
-positive Monobank inflows. Each refund is imported as its own Firefly deposit;
-the original expense remains unchanged. If unmatched imports are disabled,
+positive Monobank inflows. A positive inflow matching an expense rule is also
+treated as a reversal, even without an exact refund-description rule. Each
+reversal is imported as its own Firefly deposit; the original expense remains
+unchanged. Firefly III represents that reversal with a positive amount
+magnitude and a deposit type, which increases the asset balance. Monobank
+statement items with `hold: true` are imported immediately using their signed
+amount to choose withdrawal or deposit, just like posted rows. Firefly stores
+the amount as a positive magnitude and uses the transaction type to express
+direction. If a hold is later reversed, its separate incoming reversal is
+imported as a deposit.
+If unmatched imports are disabled,
 webhook deliveries that cannot be imported receive a non-200 response so
 Monobank can retry them.
 
