@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"stuzer.link/monobank-firefly3-bot/config"
@@ -283,7 +284,36 @@ func storeTransaction(transaction firefly3.TransactionSplitStore) error {
 		ErrorIfDuplicateHash: true,
 		Transactions:         []firefly3.TransactionSplitStore{transaction},
 	}, &opts)
+	if err == nil {
+		return nil
+	}
+	if fields := fireflyValidationFieldNamesFromError(err); len(fields) > 0 {
+		return fmt.Errorf("%w (Firefly validation fields: %s)", err, strings.Join(fields, ", "))
+	}
 	return err
+}
+
+func fireflyValidationFieldNamesFromError(err error) []string {
+	var apiError firefly3.GenericSwaggerError
+	if !errors.As(err, &apiError) {
+		return nil
+	}
+	return fireflyValidationFieldNames(apiError.Body())
+}
+
+func fireflyValidationFieldNames(body []byte) []string {
+	var response struct {
+		Errors map[string]json.RawMessage `json:"errors"`
+	}
+	if json.Unmarshal(body, &response) != nil || len(response.Errors) == 0 {
+		return nil
+	}
+	fields := make([]string, 0, len(response.Errors))
+	for field := range response.Errors {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	return fields
 }
 
 func transactionExists(externalID string, date time.Time) (bool, error) {

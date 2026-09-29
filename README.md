@@ -36,6 +36,12 @@ configure accounts in `config.json`
 
 configure which transactions to match (by name or mcc codes) in `config.json`
 
+New merchant categories are added as `transaction_types` configuration rules;
+MCC based categories do not require application code changes. For example, a
+rule can set `mcc_codes` and `firefly3.category` to classify an entire merchant
+category. Keep unmatched transactions enabled only if `Uncategorized` is the
+intended fallback.
+
 ## Run
 
 you only need `.env`, `config.json` and build binary to run the bot
