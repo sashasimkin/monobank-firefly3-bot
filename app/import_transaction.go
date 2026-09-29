@@ -8,6 +8,7 @@ import (
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
 	"github.com/antihax/optional"
+	"log"
 	"math"
 	"os"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"stuzer.link/monobank-firefly3-bot/config"
+	"sync"
 	"time"
 )
 
@@ -26,18 +28,54 @@ const (
 )
 
 var errNoMatchingTransactionRule = errors.New("no transaction rule matched Monobank statement item")
+var transferWebhookWorkerOnce sync.Once
+var transferWebhookQueue = make(chan monobank.WebHookResponse, 128)
 
 // ImportTransaction imports a single webhook event. Firefly III identifies
 // direction through the transaction type and expects a positive amount
 // magnitude for both withdrawals and deposits.
 func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
-	if rule, refund := matchTransactionRule(monobankTransaction.Data.StatementItem); !refund && requiresStatementTransferPair(rule) {
-		// A single webhook row cannot prove both ends of a transfer. The
-		// scheduled statement poller will match it against other mapped accounts.
-		return nil
+	if IsInternalTransferWebhook(monobankTransaction) {
+		return importTransferWebhook(context.Background(), monobankTransaction)
 	}
 	_, err := importTransaction(monobankTransaction, App().Config.ImportUnmatchedTransactions)
 	return err
+}
+
+// IsInternalTransferWebhook identifies events that need counterpart lookup
+// before the bot can safely create a Firefly transfer.
+func IsInternalTransferWebhook(monobankTransaction monobank.WebHookResponse) bool {
+	rule, refund := matchTransactionRule(monobankTransaction.Data.StatementItem)
+	return !refund && requiresStatementTransferPair(rule)
+}
+
+// ScheduleInternalTransferWebhook acknowledges the webhook path without
+// holding Monobank's request open during its rate-limited statement lookups.
+func ScheduleInternalTransferWebhook(monobankTransaction monobank.WebHookResponse) error {
+	account := App().Config.GetAccountByMonobankId(monobankTransaction.Data.Account)
+	if account.MonobankId == "" || account.Firefly3Name == "" {
+		return errors.New("cannot find Firefly or Monobank account mapping")
+	}
+	transferWebhookWorkerOnce.Do(func() { go runTransferWebhookWorker() })
+	select {
+	case transferWebhookQueue <- monobankTransaction:
+		return nil
+	default:
+		return errors.New("Monobank transfer webhook queue is full")
+	}
+}
+
+func runTransferWebhookWorker() {
+	for monobankTransaction := range transferWebhookQueue {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		err := importTransferWebhook(ctx, monobankTransaction)
+		cancel()
+		if err != nil {
+			// The regular statement sync retries the event. Do not log payloads,
+			// descriptions, amounts, account IDs, or API error bodies here.
+			log.Printf("Monobank transfer webhook lookup failed; scheduled statement sync will retry")
+		}
+	}
 }
 
 func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatched bool) (bool, error) {

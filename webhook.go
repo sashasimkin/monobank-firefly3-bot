@@ -9,6 +9,8 @@ import (
 	"stuzer.link/monobank-firefly3-bot/app"
 )
 
+var scheduleInternalTransferWebhook = app.ScheduleInternalTransferWebhook
+
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -25,6 +27,17 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &transaction); err != nil {
 		log.Printf("parse Monobank webhook: %v", err)
 		http.Error(w, "invalid webhook", http.StatusBadRequest)
+		return
+	}
+	if app.IsInternalTransferWebhook(transaction) {
+		if err := scheduleInternalTransferWebhook(transaction); err != nil {
+			log.Printf("schedule Monobank transfer webhook: %v", err)
+			http.Error(w, "transaction import failed", http.StatusInternalServerError)
+			return
+		}
+		// The targeted statement lookup observes Monobank's per-account
+		// rate limit. Acknowledge immediately; the hourly poller is the fallback.
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := app.ImportTransaction(transaction); err != nil {

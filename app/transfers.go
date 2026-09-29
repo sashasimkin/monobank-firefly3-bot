@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -31,6 +32,58 @@ func configuredTransferMatchWindow(cfg config.Config) (time.Duration, error) {
 
 func requiresStatementTransferPair(rule *config.TransactionTypes) bool {
 	return rule != nil && rule.Firefly3.Type == "transfer" && slices.Contains(rule.MccCodes, 4829) && rule.Firefly3.Source == "" && rule.Firefly3.Destination == ""
+}
+
+func importTransferWebhook(ctx context.Context, event monobank.WebHookResponse) error {
+	window, err := configuredTransferMatchWindow(App().Config)
+	if err != nil {
+		return err
+	}
+	source := App().Config.GetAccountByMonobankId(event.Data.Account)
+	if source.MonobankId == "" || source.Firefly3Name == "" {
+		return errors.New("cannot find Firefly or Monobank account mapping")
+	}
+	eventTime := int64(event.Data.StatementItem.Time)
+	from := eventTime - int64(window/time.Second)
+	if from < 0 {
+		from = 0
+	}
+	to := eventTime + int64(window/time.Second)
+	now := time.Now().Unix()
+	if to > now {
+		to = now
+	}
+	entries := []statementEntry{{Account: source, Item: event.Data.StatementItem}}
+	for _, account := range App().Config.Accounts {
+		if account.MonobankId == source.MonobankId || account.Currency != source.Currency {
+			continue
+		}
+		items, err := fetchStatementItems(ctx, account.MonobankId, from, to)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			entries = append(entries, statementEntry{Account: account, Item: item})
+		}
+	}
+
+	pairs := matchStatementTransfers(entries, App().Config.TransactionTypes, window)
+	eventKey := statementEntryKey(entries[0])
+	selected := make([]statementEntry, 0, 2)
+	for _, pair := range pairs {
+		outKey := statementEntryKey(pair.Outgoing)
+		inKey := statementEntryKey(pair.Incoming)
+		if outKey == eventKey || inKey == eventKey {
+			selected = append(selected, pair.Outgoing, pair.Incoming)
+		}
+	}
+	if len(selected) == 0 {
+		// Do not guess the other account. The incremental poller will retry
+		// this row and preserve its signed direction if it remains unmatched.
+		return nil
+	}
+	_, err = importStatementEntries(selected, App().Config)
+	return err
 }
 
 type statementEntry struct {

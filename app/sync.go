@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -206,8 +207,11 @@ func fetchStatementItems(ctx context.Context, accountID string, from, to int64) 
 }
 
 var lastStatementRequest time.Time
+var statementRequestLock sync.Mutex
 
 func waitForMonobankRateLimit() {
+	statementRequestLock.Lock()
+	defer statementRequestLock.Unlock()
 	if !lastStatementRequest.IsZero() {
 		wait := time.Until(lastStatementRequest.Add(monobankMinDelay))
 		if wait > 0 {
