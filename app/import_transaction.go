@@ -330,15 +330,36 @@ func mainAmountMinor(item monobank.StatementItemsInner) int64 {
 }
 
 func storeTransaction(transaction firefly3.TransactionSplitStore) error {
+	err := storeFireflyTransaction(transaction)
+	if err == nil {
+		return nil
+	}
+	fields := fireflyValidationFieldNamesFromError(err)
+	if !slices.Equal(fields, []string{"transactions.0.description"}) {
+		return formatFireflyValidationError(err)
+	}
+
+	// Some Firefly deployments may reject a source description despite local
+	// normalization. Retry only this validation failure with a safe fallback;
+	// never retry other validation errors or transport failures.
+	transaction.Description = "Monobank transaction"
+	if retryErr := storeFireflyTransaction(transaction); retryErr != nil {
+		return formatFireflyValidationError(errors.Join(err, retryErr))
+	}
+	return nil
+}
+
+func storeFireflyTransaction(transaction firefly3.TransactionSplitStore) error {
 	opts := firefly3.TransactionsApiStoreTransactionOpts{}
 	_, _, err := App().Firefly3Client.TransactionsApi.StoreTransaction(context.Background(), firefly3.TransactionStore{
 		ApplyRules:           true,
 		ErrorIfDuplicateHash: true,
 		Transactions:         []firefly3.TransactionSplitStore{transaction},
 	}, &opts)
-	if err == nil {
-		return nil
-	}
+	return err
+}
+
+func formatFireflyValidationError(err error) error {
 	if fields := fireflyValidationFieldNamesFromError(err); len(fields) > 0 {
 		return fmt.Errorf("%w (Firefly validation fields: %s)", err, strings.Join(fields, ", "))
 	}
