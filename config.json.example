@@ -16,6 +16,7 @@
         "currency": "EUR"
       }
   ],
+  "import_unmatched_transactions": false,
   "transaction_types": [
     {
       "names": ["Hetzner"],

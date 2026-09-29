@@ -47,6 +47,24 @@ you only need `.env`, `config.json` and build binary to run the bot
 
 bot will automatically register Monobank webhook url and start listening for incoming transactions
 
+For incremental statement polling, run `./monobank-firefly3-bot --monobank-sync`.
+Set `MONOBANK_SYNC_STATE_FILE` to a persistent writable file; the command saves
+per-account cursors only after a successful import. It overlaps the saved cursor
+to catch late rows and uses Monobank transaction IDs as Firefly `external_id`
+values for repeat-safe imports. Monobank statement requests are limited to one
+per minute and each request returns at most 500 rows.
+
+To import older statements explicitly, run
+`./monobank-firefly3-bot --monobank-import-history=YYYY-MM-DD`. Configure and
+review `transaction_types` (including MCC rules) before using this command.
+History is read in statement-window chunks and may take a long time because of
+Monobank's rate limit. The command does not change the incremental poll cursor.
+
+Set `import_unmatched_transactions` to `true` to import new rows that do not
+match a configured rule under the `Uncategorized` category. This is useful for
+new transactions while MCC rules are being prepared; historical imports should
+wait until rules are ready.
+
 ## Usage
 
 to get monobank account ids use `--monobank-list-accounts` command
