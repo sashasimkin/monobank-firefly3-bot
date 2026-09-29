@@ -225,6 +225,21 @@ func TestBuildStatementTransfer(t *testing.T) {
 	}
 }
 
+func TestStatementDescriptionFallsBackForWhitespace(t *testing.T) {
+	if got := statementDescription(" \t\n"); got != "Monobank account transfer" {
+		t.Fatalf("statementDescription(whitespace) = %q, want non-empty fallback", got)
+	}
+}
+
+func TestBuildTransactionFallsBackForWhitespaceDescription(t *testing.T) {
+	account := config.Account{MonobankId: "account", Firefly3Name: "Account", Currency: "UAH"}
+	item := monobank.StatementItemsInner{Id: "id", Time: 1790672400, Amount: -12345, Description: " \t\n"}
+	got := buildTransaction(item, account, nil, false, "external-id", time.Unix(int64(item.Time), 0))
+	if got.Description != "Monobank transaction" {
+		t.Fatalf("transaction description = %q, want non-empty fallback", got.Description)
+	}
+}
+
 func TestConfiguredTransferMatchWindow(t *testing.T) {
 	if got, err := configuredTransferMatchWindow(config.Config{}); err != nil || got != 120*time.Second {
 		t.Fatalf("default transfer match window = %s, %v; want 120s", got, err)

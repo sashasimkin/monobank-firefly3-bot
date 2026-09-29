@@ -222,14 +222,14 @@ func buildTransaction(item monobank.StatementItemsInner, account config.Account,
 	typeTransfer := firefly3.TRANSFER_TransactionTypeProperty
 
 	amount := formatMinorAmount(mainAmountMinor(item))
-	description := item.Description
+	description := strings.TrimSpace(item.Description)
 	category := uncategorizedCategory
 	transactionType := ""
 	configuredSource := ""
 	configuredDestination := ""
 	if rule != nil {
-		if rule.Firefly3.Description != "" {
-			description = rule.Firefly3.Description
+		if configuredDescription := strings.TrimSpace(rule.Firefly3.Description); configuredDescription != "" {
+			description = configuredDescription
 		}
 		if rule.Firefly3.Category != "" {
 			category = rule.Firefly3.Category
