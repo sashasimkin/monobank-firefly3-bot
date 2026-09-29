@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -75,5 +79,50 @@ func TestNormalizeFireflyTransactionPayloadEnsuresValidDescription(t *testing.T)
 	}
 	if got := len([]rune(payload.Transactions[3].Description)); got != fireflyDescriptionMaxLength {
 		t.Fatalf("long description rune count = %d, want %d", got, fireflyDescriptionMaxLength)
+	}
+}
+
+func TestStoreTransactionRetriesDescriptionValidationWithFallback(t *testing.T) {
+	var descriptions []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Transactions []struct {
+				Description string `json:"description"`
+			} `json:"transactions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode transaction request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		descriptions = append(descriptions, payload.Transactions[0].Description)
+		w.Header().Set("Content-Type", "application/json")
+		if payload.Transactions[0].Description != "Monobank transaction" {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"errors":{"transactions.0.description":["The description field is invalid."]}}`))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	previous := App().Firefly3Client
+	defer func() { App().Firefly3Client = previous }()
+	configuration := firefly3.NewConfiguration()
+	configuration.BasePath = server.URL + "/api"
+	configuration.HTTPClient = newFireflyTransactionHTTPClient()
+	App().Firefly3Client = firefly3.NewAPIClient(configuration)
+
+	err := storeTransaction(firefly3.TransactionSplitStore{
+		Date:        time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC),
+		Amount:      "1.00",
+		Description: "source description",
+	})
+	if err != nil {
+		t.Fatalf("storeTransaction() error = %v", err)
+	}
+	if len(descriptions) != 2 || descriptions[0] != "source description" || descriptions[1] != "Monobank transaction" {
+		t.Fatalf("attempted descriptions = %#v, want original then safe fallback", descriptions)
 	}
 }

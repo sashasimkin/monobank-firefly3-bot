@@ -69,7 +69,8 @@ ordinary signed inflow/outflow treatment.
 
 Before posting to Firefly III, the HTTP transport normalizes every transaction
 description, supplies a fallback for missing or blank text, and limits the
-result to Firefly's 1,000-character API maximum.
+result to Firefly's 1,000-character API maximum. If Firefly still rejects only
+the description field, the bot retries once with a generic fallback.
 
 A webhook for MCC 4829 is acknowledged immediately and queued for a background
 lookup of recent statements from mapped accounts in the same currency. A unique
