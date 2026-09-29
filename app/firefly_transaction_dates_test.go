@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -43,5 +44,36 @@ func TestFireflyTransactionTransportOmitsZeroDates(t *testing.T) {
 	}
 	if !strings.Contains(sentBody, `"date"`) {
 		t.Fatalf("transport removed required transaction date: %s", sentBody)
+	}
+	if !strings.Contains(sentBody, `"description":"Monobank transaction"`) {
+		t.Fatalf("transport did not add a non-empty description fallback: %s", sentBody)
+	}
+}
+
+func TestNormalizeFireflyTransactionPayloadEnsuresValidDescription(t *testing.T) {
+	long := strings.Repeat("x", fireflyDescriptionMaxLength+20)
+	body, changed, err := normalizeFireflyTransactionPayload([]byte(`{"transactions":[{}, {"description":" \t "}, {"description":"first\nsecond"}, {"description":"` + long + `"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("payload descriptions were not normalized")
+	}
+	var payload struct {
+		Transactions []struct {
+			Description string `json:"description"`
+		} `json:"transactions"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Transactions) != 4 {
+		t.Fatalf("transaction count = %d, want 4", len(payload.Transactions))
+	}
+	if payload.Transactions[0].Description != "Monobank transaction" || payload.Transactions[1].Description != "Monobank transaction" || payload.Transactions[2].Description != "first second" {
+		t.Fatalf("unexpected normalized descriptions: %#v", payload.Transactions[:3])
+	}
+	if got := len([]rune(payload.Transactions[3].Description)); got != fireflyDescriptionMaxLength {
+		t.Fatalf("long description rune count = %d, want %d", got, fireflyDescriptionMaxLength)
 	}
 }

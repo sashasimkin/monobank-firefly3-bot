@@ -15,7 +15,7 @@ import (
 func TestOmitZeroOptionalFireflyDates(t *testing.T) {
 	body := []byte(`{"apply_rules":true,"transactions":[{"date":"2026-09-29T10:00:00Z","amount":"12.34","category_name":"Groceries","external_id":"source-id","interest_date":"0001-01-01T00:00:00Z","book_date":"0001-01-01T00:00:00Z","process_date":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","payment_date":"0001-01-01T00:00:00Z","invoice_date":"0001-01-01T00:00:00Z"}]}`)
 
-	got, changed, err := omitZeroOptionalFireflyDates(body)
+	got, changed, err := normalizeFireflyTransactionPayload(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,8 +42,8 @@ func TestOmitZeroOptionalFireflyDates(t *testing.T) {
 }
 
 func TestKeepNonzeroOptionalFireflyDate(t *testing.T) {
-	body := []byte(`{"transactions":[{"date":"2026-09-29T10:00:00Z","book_date":"2026-09-29T10:00:00Z"}]}`)
-	got, changed, err := omitZeroOptionalFireflyDates(body)
+	body := []byte(`{"transactions":[{"date":"2026-09-29T10:00:00Z","book_date":"2026-09-29T10:00:00Z","description":"Merchant"}]}`)
+	got, changed, err := normalizeFireflyTransactionPayload(body)
 	if err != nil {
 		t.Fatal(err)
 	}
