@@ -107,12 +107,13 @@ func TestRuleOrderUsesFirstMatch(t *testing.T) {
 
 func TestGroceryMCCBuildsCategorizedWithdrawal(t *testing.T) {
 	account := config.Account{Firefly3Name: "Monobank Black UAH", Currency: "UAH"}
-	rule := config.TransactionTypes{MccCodes: []int{5411, 5921}, Firefly3: config.TransactionTypeFirefly3{Type: "withdrawal", Category: "Groceries"}}
+	rule := config.TransactionTypes{MccCodes: []int{5411, 5499, 5921}, Firefly3: config.TransactionTypeFirefly3{Type: "withdrawal", Category: "Groceries"}}
 	tests := []struct {
 		name string
 		mcc  float64
 	}{
 		{name: "supermarket", mcc: 5411},
+		{name: "specialty food store", mcc: 5499},
 		{name: "liquor store", mcc: 5921},
 	}
 	for _, test := range tests {
@@ -151,6 +152,20 @@ func TestUnmatchedWebhookRuleIsRetryable(t *testing.T) {
 	}
 	if err := requireTransactionRule(nil, false, true); err != nil {
 		t.Fatalf("previously imported unmatched event should be acknowledged as a duplicate: %v", err)
+	}
+}
+
+func TestFireflyValidationLoggingKeepsOnlyFieldNames(t *testing.T) {
+	body := []byte(`{"message":"The given data was invalid.","errors":{"transactions.0.destination_name":["Sensitive merchant name is invalid"],"transactions.0.amount":["Private amount is invalid"]}}`)
+	got := fireflyValidationFieldNames(body)
+	want := []string{"transactions.0.amount", "transactions.0.destination_name"}
+	if len(got) != len(want) {
+		t.Fatalf("validation fields = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("validation fields = %v, want %v", got, want)
+		}
 	}
 }
 

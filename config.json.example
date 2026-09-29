@@ -41,7 +41,7 @@
     },
     {
       "names": ["АТБ", "Велмарт", "Novus", "Glovo", "zakaz.ua", "Мегамаркет", "Сільпо", "Фора", "METRO"],
-      "mcc_codes": [5411, 5921],
+      "mcc_codes": [5411, 5499, 5921],
       "firefly3": {
         "description": "Groceries",
         "category": "Groceries"
