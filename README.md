@@ -67,6 +67,10 @@ rows only when they have the same currency and amount, occur within
 exactly one possible counterpart. Ambiguous or unmatched rows keep their
 ordinary signed inflow/outflow treatment.
 
+Before posting to Firefly III, the HTTP transport normalizes every transaction
+description, supplies a fallback for missing or blank text, and limits the
+result to Firefly's 1,000-character API maximum.
+
 A webhook for MCC 4829 is acknowledged immediately and queued for a background
 lookup of recent statements from mapped accounts in the same currency. A unique
 pair is imported as a transfer; if no pair is available, the hourly statement

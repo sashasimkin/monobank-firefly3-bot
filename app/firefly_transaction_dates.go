@@ -41,7 +41,7 @@ func (t fireflyTransactionDateTransport) RoundTrip(request *http.Request) (*http
 	}
 	_ = request.Body.Close()
 
-	filtered, changed, err := omitZeroOptionalFireflyDates(body)
+	filtered, changed, err := normalizeFireflyTransactionPayload(body)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (t fireflyTransactionDateTransport) RoundTrip(request *http.Request) (*http
 	return t.next.RoundTrip(request)
 }
 
-func omitZeroOptionalFireflyDates(body []byte) ([]byte, bool, error) {
+func normalizeFireflyTransactionPayload(body []byte) ([]byte, bool, error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, false, err
@@ -85,6 +85,19 @@ func omitZeroOptionalFireflyDates(body []byte) ([]byte, bool, error) {
 				delete(transaction, field)
 				changed = true
 			}
+		}
+		descriptionJSON, hasDescription := transaction["description"]
+		var description string
+		if !hasDescription || json.Unmarshal(descriptionJSON, &description) != nil {
+			description = ""
+		}
+		normalizedDescription, err := json.Marshal(normalizeFireflyDescription(description, "Monobank transaction"))
+		if err != nil {
+			return nil, false, err
+		}
+		if !hasDescription || !bytes.Equal(descriptionJSON, normalizedDescription) {
+			transaction["description"] = normalizedDescription
+			changed = true
 		}
 	}
 	if !changed {
