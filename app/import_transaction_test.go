@@ -179,6 +179,64 @@ func TestGroceryMCCBuildsCategorizedWithdrawal(t *testing.T) {
 	}
 }
 
+func TestMCC4829MatchesOnlyUniqueCrossAccountSameCurrencyAmounts(t *testing.T) {
+	rule := config.TransactionTypes{MccCodes: []int{4829}, Firefly3: config.TransactionTypeFirefly3{Type: "transfer", Category: "Money transfers"}}
+	out := statementEntry{Account: config.Account{MonobankId: "jar", Firefly3Name: "Jar", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "out", Time: 1000, Amount: -10000, Mcc: 4829}}
+	in := statementEntry{Account: config.Account{MonobankId: "card", Firefly3Name: "Card", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "in", Time: 1050, Amount: 10000, Mcc: 4829}}
+	pairs := matchStatementTransfers([]statementEntry{out, in}, []config.TransactionTypes{rule}, 120*time.Second)
+	if len(pairs) != 1 || pairs[0].Outgoing.Item.Id != "out" || pairs[0].Incoming.Item.Id != "in" {
+		t.Fatalf("matched pairs = %+v, want the unique outgoing/incoming pair", pairs)
+	}
+
+	otherIncoming := in
+	otherIncoming.Item.Id = "second-in"
+	otherIncoming.Item.Time = 1060
+	pairs = matchStatementTransfers([]statementEntry{out, in, otherIncoming}, []config.TransactionTypes{rule}, 120*time.Second)
+	if len(pairs) != 0 {
+		t.Fatalf("ambiguous candidates matched as pairs: %+v", pairs)
+	}
+}
+
+func TestMCC4829DoesNotPairDifferentCurrenciesOrAccounts(t *testing.T) {
+	rule := config.TransactionTypes{MccCodes: []int{4829}, Firefly3: config.TransactionTypeFirefly3{Type: "transfer"}}
+	out := statementEntry{Account: config.Account{MonobankId: "jar", Firefly3Name: "Jar", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "out", Time: 1000, Amount: -10000, Mcc: 4829}}
+	in := statementEntry{Account: config.Account{MonobankId: "card", Firefly3Name: "Card", Currency: "USD"}, Item: monobank.StatementItemsInner{Id: "in", Time: 1000, Amount: 10000, Mcc: 4829}}
+	if pairs := matchStatementTransfers([]statementEntry{out, in}, []config.TransactionTypes{rule}, 120*time.Second); len(pairs) != 0 {
+		t.Fatalf("different-currency entries matched: %+v", pairs)
+	}
+	in.Account = out.Account
+	if pairs := matchStatementTransfers([]statementEntry{out, in}, []config.TransactionTypes{rule}, 120*time.Second); len(pairs) != 0 {
+		t.Fatalf("same-account entries matched: %+v", pairs)
+	}
+}
+
+func TestBuildStatementTransfer(t *testing.T) {
+	out := statementEntry{Account: config.Account{MonobankId: "jar", Firefly3Name: "Jar", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "out", Time: 1790672400, Amount: -12345, Mcc: 4829, Description: "Jar withdrawal"}}
+	in := statementEntry{Account: config.Account{MonobankId: "card", Firefly3Name: "Card", Currency: "UAH"}, Item: monobank.StatementItemsInner{Id: "in", Time: 1790672401, Amount: 12345, Mcc: 4829}}
+	got := buildStatementTransfer(statementTransferPair{Outgoing: out, Incoming: in})
+	if got.Type_ == nil || *got.Type_ != firefly3.TRANSFER_TransactionTypeProperty {
+		t.Fatalf("type = %v, want transfer", got.Type_)
+	}
+	if got.Amount != "123.45" || got.SourceName != "Jar" || got.DestinationName != "Card" || got.CategoryName != "" {
+		t.Fatalf("unexpected transfer fields: amount=%q source=%q destination=%q category=%q", got.Amount, got.SourceName, got.DestinationName, got.CategoryName)
+	}
+	if got.ExternalId == "" || got.ExternalId != statementTransferExternalID(out, in) {
+		t.Fatalf("transfer external ID is unstable: %q", got.ExternalId)
+	}
+}
+
+func TestConfiguredTransferMatchWindow(t *testing.T) {
+	if got, err := configuredTransferMatchWindow(config.Config{}); err != nil || got != 120*time.Second {
+		t.Fatalf("default transfer match window = %s, %v; want 120s", got, err)
+	}
+	if _, err := configuredTransferMatchWindow(config.Config{TransferMatchWindowSeconds: 601}); err == nil {
+		t.Fatal("accepted transfer match window above safe maximum")
+	}
+	if got, err := configuredTransferMatchWindow(config.Config{TransferMatchWindowSeconds: 300}); err != nil || got != 300*time.Second {
+		t.Fatalf("configured transfer match window = %s, %v; want 300s", got, err)
+	}
+}
+
 func TestNonGroceryMCCDoesNotMatchGroceryRule(t *testing.T) {
 	rule := config.TransactionTypes{MccCodes: []int{5411}, Firefly3: config.TransactionTypeFirefly3{Category: "Groceries"}}
 	got, isRefund := matchTransactionRuleFrom([]config.TransactionTypes{rule}, monobank.StatementItemsInner{Amount: -1000, Description: "Merchant", Mcc: 7997})

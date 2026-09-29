@@ -31,11 +31,20 @@ var errNoMatchingTransactionRule = errors.New("no transaction rule matched Monob
 // direction through the transaction type and expects a positive amount
 // magnitude for both withdrawals and deposits.
 func ImportTransaction(monobankTransaction monobank.WebHookResponse) error {
+	if rule, refund := matchTransactionRule(monobankTransaction.Data.StatementItem); !refund && requiresStatementTransferPair(rule) {
+		// A single webhook row cannot prove both ends of a transfer. The
+		// scheduled statement poller will match it against other mapped accounts.
+		return nil
+	}
 	_, err := importTransaction(monobankTransaction, App().Config.ImportUnmatchedTransactions)
 	return err
 }
 
 func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatched bool) (bool, error) {
+	return importTransactionWithTransferFallback(monobankTransaction, allowUnmatched, false)
+}
+
+func importTransactionWithTransferFallback(monobankTransaction monobank.WebHookResponse, allowUnmatched, transferFallback bool) (bool, error) {
 	item := monobankTransaction.Data.StatementItem
 	if item.Hold || (item.Amount == 0 && item.CommissionRate == 0) || item.Id == "" {
 		return false, nil
@@ -70,6 +79,13 @@ func importTransaction(monobankTransaction monobank.WebHookResponse, allowUnmatc
 	}
 	if err := requireTransactionRule(rule, allowUnmatched, alreadyImported); err != nil {
 		return false, err
+	}
+	if transferFallback && requiresStatementTransferPair(rule) {
+		// A unique counterpart was not found; preserve the source event as its
+		// signed inflow/outflow instead of inventing a transfer destination.
+		fallbackRule := *rule
+		fallbackRule.Firefly3.Type = ""
+		rule = &fallbackRule
 	}
 
 	created := false

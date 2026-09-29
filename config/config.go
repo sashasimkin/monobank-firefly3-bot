@@ -4,6 +4,7 @@ type Config struct {
 	Accounts                    []Account          `json:"accounts"`
 	TransactionTypes            []TransactionTypes `json:"transaction_types"`
 	ImportUnmatchedTransactions bool               `json:"import_unmatched_transactions,omitempty"`
+	TransferMatchWindowSeconds  int                `json:"transfer_match_window_seconds,omitempty"`
 }
 
 type Account struct {

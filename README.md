@@ -59,6 +59,16 @@ to catch late rows and uses Monobank transaction IDs as Firefly `external_id`
 values for repeat-safe imports. Monobank statement requests are limited to one
 per minute and each request returns at most 500 rows.
 
+For internal account transfers classified by MCC 4829, configure the rule with
+`firefly3.type: "transfer"` and leave source and destination unset. The statement poller fetches mapped accounts as a
+batch and matches opposite-signed rows only when they have the same currency
+and amount, occur within `transfer_match_window_seconds` (default 120, maximum
+600), and each row has exactly one possible counterpart. Ambiguous or unmatched
+rows keep their ordinary signed inflow/outflow treatment. A single webhook row
+cannot prove both sides, so transfer-rule rows are left for statement polling.
+Previously imported standalone rows are not edited or deleted; a separate
+reviewed migration is required to convert them.
+
 To import older statements explicitly, run
 `./monobank-firefly3-bot --monobank-import-history=YYYY-MM-DD`. Configure and
 review `transaction_types` (including MCC rules) before using this command.
