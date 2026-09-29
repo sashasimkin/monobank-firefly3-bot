@@ -73,8 +73,8 @@ pair is imported as a transfer; if no pair is available, the hourly statement
 poller retries and handles the row. This lookup observes Monobank's one-request
 per-minute limit. The webhook queue is in memory, so the incremental statement
 poller remains the durable fallback. Previously imported standalone rows are
-not edited or deleted; a separate reviewed migration is required to convert
-them.
+not edited or deleted. After rule iteration is complete, they can be cleared
+and reimported with the finalized rules if a clean Firefly history is desired.
 
 To import older statements explicitly, run
 `./monobank-firefly3-bot --monobank-import-history=YYYY-MM-DD`. Configure and

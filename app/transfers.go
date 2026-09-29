@@ -9,6 +9,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
@@ -166,6 +167,7 @@ func buildStatementTransfer(pair statementTransferPair) firefly3.TransactionSpli
 }
 
 func statementDescription(description string) string {
+	description = strings.TrimSpace(description)
 	if description == "" {
 		return "Monobank account transfer"
 	}
