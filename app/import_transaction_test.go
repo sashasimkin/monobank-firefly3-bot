@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -228,6 +229,18 @@ func TestBuildStatementTransfer(t *testing.T) {
 func TestStatementDescriptionFallsBackForWhitespace(t *testing.T) {
 	if got := statementDescription(" \t\n"); got != "Monobank account transfer" {
 		t.Fatalf("statementDescription(whitespace) = %q, want non-empty fallback", got)
+	}
+}
+
+func TestNormalizeFireflyDescriptionTrimsControlsAndLimitsLength(t *testing.T) {
+	got := normalizeFireflyDescription("  first\nsecond\x00 ", "fallback")
+	if got != "first second" {
+		t.Fatalf("normalized description = %q, want whitespace and controls normalized", got)
+	}
+	long := strings.Repeat("я", fireflyDescriptionMaxLength+5)
+	got = normalizeFireflyDescription(long, "fallback")
+	if len([]rune(got)) != fireflyDescriptionMaxLength {
+		t.Fatalf("normalized rune count = %d, want %d", len([]rune(got)), fireflyDescriptionMaxLength)
 	}
 }
 

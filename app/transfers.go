@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"gitea.stuzer.link/stuzer05/go-firefly3/v2"
 	"gitea.stuzer.link/stuzer05/go-monobank"
@@ -19,6 +20,7 @@ import (
 
 const defaultTransferMatchWindowSeconds = 120
 const maximumTransferMatchWindowSeconds = 600
+const fireflyDescriptionMaxLength = 1000
 
 func configuredTransferMatchWindow(cfg config.Config) (time.Duration, error) {
 	seconds := cfg.TransferMatchWindowSeconds
@@ -167,9 +169,24 @@ func buildStatementTransfer(pair statementTransferPair) firefly3.TransactionSpli
 }
 
 func statementDescription(description string) string {
-	description = strings.TrimSpace(description)
+	return normalizeFireflyDescription(description, "Monobank account transfer")
+}
+
+func normalizeFireflyDescription(description, fallback string) string {
+	description = strings.ToValidUTF8(description, "�")
+	description = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, description)
+	description = strings.Join(strings.Fields(description), " ")
 	if description == "" {
-		return "Monobank account transfer"
+		description = fallback
+	}
+	runes := []rune(description)
+	if len(runes) > fireflyDescriptionMaxLength {
+		description = strings.TrimSpace(string(runes[:fireflyDescriptionMaxLength]))
 	}
 	return description
 }
