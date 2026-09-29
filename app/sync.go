@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"gitea.stuzer.link/stuzer05/go-monobank"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,9 +36,8 @@ func SyncMonobankTransactions(ctx context.Context) error {
 		return err
 	}
 	now := time.Now().Unix()
-	initialLookback := envInt64("MONOBANK_SYNC_INITIAL_LOOKBACK_HOURS", 1)
 	overlapHours := envInt64("MONOBANK_SYNC_OVERLAP_HOURS", 48)
-	if initialLookback < 1 || initialLookback > 24*31 || overlapHours < 0 || overlapHours > 24*31 {
+	if overlapHours < 0 || overlapHours > 24*31 {
 		return errors.New("invalid Monobank sync lookback configuration")
 	}
 
@@ -53,6 +53,7 @@ func SyncMonobankTransactions(ctx context.Context) error {
 			if err := writeSyncState(statePath, state); err != nil {
 				return err
 			}
+			log.Printf("Initialized Monobank sync cursor for %s; existing transactions were left untouched", account.Firefly3Name)
 			continue
 		}
 		from -= overlapHours * int64(time.Hour/time.Second)
@@ -66,15 +67,21 @@ func SyncMonobankTransactions(ctx context.Context) error {
 			return fmt.Errorf("fetch statement for %s: %w", account.Firefly3Name, err)
 		}
 		sort.Slice(items, func(i, j int) bool { return items[i].Time < items[j].Time })
+		imported := 0
 		for _, item := range items {
-			if _, err := importTransaction(monobank.WebHookResponse{Type: "StatementItem", Data: monobank.WebHookResponseData{Account: account.MonobankId, StatementItem: item}}, true); err != nil {
+			created, err := importTransaction(monobank.WebHookResponse{Type: "StatementItem", Data: monobank.WebHookResponseData{Account: account.MonobankId, StatementItem: item}}, true)
+			if err != nil {
 				return fmt.Errorf("import statement item for %s: %w", account.Firefly3Name, err)
+			}
+			if created {
+				imported++
 			}
 		}
 		state.LastSync[account.MonobankId] = now
 		if err := writeSyncState(statePath, state); err != nil {
 			return err
 		}
+		log.Printf("Synced Monobank account %s: statement_items=%d, imported_transactions=%d", account.Firefly3Name, len(items), imported)
 	}
 	return nil
 }
@@ -95,6 +102,7 @@ func ImportMonobankHistory(ctx context.Context, from time.Time) error {
 			return errors.New("all configured accounts need Monobank and Firefly names")
 		}
 		start := from.Unix()
+		imported := 0
 		for start < end {
 			chunkEnd := start + chunkSize
 			if chunkEnd > end {
@@ -106,12 +114,17 @@ func ImportMonobankHistory(ctx context.Context, from time.Time) error {
 			}
 			sort.Slice(items, func(i, j int) bool { return items[i].Time < items[j].Time })
 			for _, item := range items {
-				if _, err := importTransaction(monobank.WebHookResponse{Type: "StatementItem", Data: monobank.WebHookResponseData{Account: account.MonobankId, StatementItem: item}}, true); err != nil {
+				created, err := importTransaction(monobank.WebHookResponse{Type: "StatementItem", Data: monobank.WebHookResponseData{Account: account.MonobankId, StatementItem: item}}, true)
+				if err != nil {
 					return fmt.Errorf("import history for %s: %w", account.Firefly3Name, err)
+				}
+				if created {
+					imported++
 				}
 			}
 			start = chunkEnd + 1
 		}
+		log.Printf("Imported Monobank history for %s: new_transactions=%d", account.Firefly3Name, imported)
 	}
 	return nil
 }
