@@ -12,6 +12,16 @@ import (
 var scheduleInternalTransferWebhook = app.ScheduleInternalTransferWebhook
 
 func handleWebhook(w http.ResponseWriter, r *http.Request) {
+	// Monobank requires exactly HTTP 200 for the GET used to validate a URL.
+	if r.Method == http.MethodGet {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("read Monobank webhook body: %v", err)
