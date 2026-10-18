@@ -10,7 +10,6 @@ import (
 	"github.com/antihax/optional"
 	"github.com/joho/godotenv"
 	"log"
-	"net/http"
 	"os"
 	"stuzer.link/monobank-firefly3-bot/app"
 	"time"
@@ -87,31 +86,8 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		webhookLocalUrl := fmt.Sprintf("/webhook/%s", os.Getenv("MONOBANK_WEBHOOK_SECRET"))
-		webhookUrl := fmt.Sprintf("https://%s/webhook/%s", os.Getenv("MONOBANK_WEBHOOK_DOMAIN"), os.Getenv("MONOBANK_WEBHOOK_SECRET"))
-
-		// register monobank webhook
-		_, err := app.App().MonobankClient.Api.PersonalWebhookPost(context.Background(), monobank.SetWebHook{WebHookUrl: webhookUrl}, os.Getenv("MONOBANK_TOKEN"))
-		if err != nil {
-			log.Fatalln("failed to register monobank webhook: " + err.Error())
-		}
-
-		// set webhook
-		http.HandleFunc(webhookLocalUrl, handleWebhook)
-
-		// health
-		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"status":"pass"}`))
-		})
-
-		// listen server
-		fmt.Println("webhook server listening on " + os.Getenv("LISTEN"))
-		fmt.Println("webhook url " + webhookUrl)
-		err = http.ListenAndServe(os.Getenv("LISTEN"), nil)
-		if err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
+		if err := runWebhookServer(); err != nil {
+			log.Fatal(err)
 		}
 	}
 }

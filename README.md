@@ -50,7 +50,20 @@ you only need `.env`, `config.json` and build binary to run the bot
 ./monobank-firefly3-bot
 ```
 
-bot will automatically register Monobank webhook url and start listening for incoming transactions
+The webhook server starts listening before registering its URL with Monobank,
+so the bank can validate the URL with a GET returning HTTP 200. Registration
+retries up to six times, with 61 seconds between failures, while the Service
+and public tunnel become reachable. Failure after the last attempt exits the
+process. The URL and registration error bodies are never logged.
+
+Rotate `MONOBANK_WEBHOOK_SECRET` by supplying a new URL-path-safe value and
+restarting the server. Startup registers the new URL automatically. `/health`
+returns HTTP 200 while the server is listening, including before registration
+so Kubernetes can route validation requests; its `webhook_registered` field
+becomes `true` only after Monobank accepts the URL. Confirm that field and
+event delivery after rotation. A short delivery gap is possible; keep statement
+polling as the fallback. Run only one webhook replica per Monobank account:
+each startup replaces that account's registered URL.
 
 For incremental statement polling, run `./monobank-firefly3-bot --monobank-sync`.
 Set `MONOBANK_SYNC_STATE_FILE` to a persistent writable file; the command saves
